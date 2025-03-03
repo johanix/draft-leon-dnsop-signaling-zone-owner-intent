@@ -73,22 +73,24 @@ zone transfer chain configurations.</t>
 <t>The HSYNC record allows DNS providers to discover each other and
 establish secure communication channels, either via DNS messages
 secured by SIG(0) signatures or via a RESTful API secured by TLS. This
-provider-to-provider communication enables automated coordination for
-tasks such as NS RRset management, zone transfers, and DNSSEC-related
-operations.</t>
+provider-to-provider communication via Agents enables automated
+coordination for tasks such as NS RRset management, zone transfers,
+and DNSSEC-related operations. This specification covers the provider
+discovery and communication establishment aspects.</t>
 
-<t>While a distributed DNSSEC multi-signer architecture (similar to
-"model 2" in RFC8901) is an important application of this framework,
-the HSYNC mechanism supports broader provider synchronization
-needs. The document defines two new entities to facilitate this
-synchronization: the Agent responsible for inter-provider communication
-and the Combiner which merges unsigned zone data from the zone owner
-with managed data from providers.</t>
+<t>The document defines two new roles to facilitate this synchronization:
+the Agent responsible for provider-to-provider communication and the
+Combiner which merges unsigned zone data from the zone owner with
+managed data from providers.</t>
 
-<t>This specification covers the provider discovery and communication
-establishment aspects, while the specific synchronization algorithms
-for multi-signer operation are described in
-I-D.draft-ietf-dnsop-dnssec-automation.</t>
+<t>While a distributed DNSSEC multi-signer architecture (similar to 
+"model 2" in RFC8901) is an important application of this framework, 
+the HSYNC mechanism supports broader provider synchronization needs.</t>
+
+<t>The specific synchronization algorithms for multi-signer operation are
+described in <xref target="I-D.draft-ietf-dnsop-dnssec-automation"/>. Specification
+for how to express these algorithms over provider-to-provider
+communication is left for a follow-up document.</t>
 
 <t>TO BE REMOVED: This document is being collaborated on in Github at:
 <eref target="https://github.com/johanix/draft-leon-dnsop-signaling-zone-owner-intent">https://github.com/johanix/draft-leon-dnsop-signaling-zone-owner-intent</eref>.
@@ -121,11 +123,11 @@ DNS itself. It defines a new DNS RRtype, HSYNC, that allows zone
 owners to:</t>
 
 <t><list style="symbols">
-  <t>Designate which providers are authorized to serve the zone</t>
-  <t>Specify whether each provider should sign the zone</t>
-  <t>Control whether providers or the zone owner manages the NS RRset</t>
-  <t>Specify on a provider-level how the zone transfer chain should be setup</t>
-  <t>Enable providers to discover each other and establish secure communication</t>
+  <t>Designate which providers should serve the zone.</t>
+  <t>Specify whether each provider should sign the zone.</t>
+  <t>Control whether providers or the zone owner manages the NS RRset.</t>
+  <t>Specify on a provider-level how the zone transfer chain should be setup.</t>
+  <t>Enable providers to locate each other and establish secure communication.</t>
 </list></t>
 
 <t>By publishing this information in the DNS, zone owners ensure all
@@ -133,11 +135,11 @@ providers receive consistent configuration information. This enables
 automated coordination between providers for tasks like:</t>
 
 <t><list style="symbols">
-  <t>NS RRset management across multiple providers</t>
-  <t>Addition or removal of providers</t>
-  <t>Transition between different signing configurations</t>
-  <t>Management of DNSSEC-related records when multiple signers are used</t>
-  <t>Zone transfer chain configuration</t>
+  <t>NS RRset management across multiple providers.</t>
+  <t>Addition or removal of providers.</t>
+  <t>Transition between different signing configurations.</t>
+  <t>Management of DNSSEC-related records when multiple signers are used.</t>
+  <t>Zone transfer chain configuration.</t>
 </list></t>
 
 <t>Knowledge of DNS NOTIFY <xref target="RFC1996"/> and DNS Dynamic Updates
@@ -156,28 +158,48 @@ when, and only when, they appear in all capitals, as shown here.</t>
 </section>
 <section anchor="terminology"><name>Terminology</name>
 
-<t>...</t>
+<t>Provider:
+   In the context of this document the term "provider" always indicate
+   a "DNS provider", i.e. an entity that provides DNS services,
+   eg. DNSSEC-signing and/or authoritative nameservice.
+...</t>
 
 </section>
 <section anchor="requirements"><name>Requirements</name>
 
-<t>The requirements for an architecture facilitating DNS provider synchronization are defined as follows:</t>
+<t>The requirements for an architecture facilitating DNS provider
+synchronization are defined as follows:</t>
 
 <t><list style="symbols">
-  <t>Zone owners MUST be able to signal to their DNS providers information sufficient for the providers to identify each other and establish secure communication.</t>
-  <t>All signaling from zone owner to DNS providers SHOULD be carried out via data in the served zone, ensuring that all providers receive the same configuration information at approximately the same time.</t>
-  <t>Zone owners MUST be able to explicitly specify which DNS providers are authorized to serve and/or sign their zones.</t>
-  <t>Zone owners MUST be able to signal the intent to onboard an additional DNS provider. When the additional provider is designated as a signer, this MUST automatically initiate the appropriate provider synchronization processes.</t>
-  <t>Zone owners MUST be able to signal the intent to offboard an existing DNS provider. When the offboarded provider is a signer, this MUST automatically initiate the appropriate provider synchronization processes.</t>
-  <t>By engaging DNS providers for signing, the zone owner MUST give up control over the following records:
+  <t>Zone owners MUST be able to signal to their DNS providers
+information sufficient for the providers to identify each other and
+establish secure communication.</t>
+  <t>All signaling from zone owner to DNS providers SHOULD be carried out
+via data in the served zone, ensuring that all providers receive the
+same configuration information at approximately the same time.</t>
+  <t>Zone owners MUST be able to explicitly specify which DNS providers
+should serve and/or sign their zones.</t>
+  <t>Zone owners MUST be able to signal the intent to onboard an
+additional DNS provider. This MUST automatically initiate the
+appropriate provider synchronization processes.</t>
+  <t>Zone owners MUST be able to signal the intent to offboard an
+existing DNS provider. This MUST automatically initiate the
+appropriate provider synchronization processes.</t>
+  <t>By engaging DNS providers for signing, the zone owner MUST give up
+control over the following records:
   <list style="symbols">
-      <t>All DNSSEC-related records in the zone</t>
-      <t>Any CDS and/or CSYNC RRsets</t>
+      <t>All DNSSEC-related records in the zone.</t>
+      <t>Any CDS and/or CSYNC RRsets.</t>
     </list></t>
-  <t>It SHOULD be possible but NOT MANDATORY for the zone owner to also delegate the management of the NS RRset to the set of DNS providers.</t>
-  <t>DNS providers MUST be able to discover and establish secure communication with each other based solely on the information provided by the zone owner in the DNS.</t>
-  <t>The architecture SHOULD support both DNS-based and API-based communication between providers.</t>
-  <t>The architecture SHOULD allow for smooth transitions between different provider configurations without service interruption.</t>
+  <t>It SHOULD be possible but NOT MANDATORY for the zone owner to also
+delegate the management of the NS RRset to the set of DNS providers.</t>
+  <t>DNS providers MUST be able to locate and establish secure
+communication with each other based on the information
+provided by the zone owner in the DNS via the HSYNC RRset.</t>
+  <t>The architecture SHOULD support both DNS-based and API-based
+communication between providers.</t>
+  <t>The architecture SHOULD allow for smooth transitions between
+different provider configurations without service interruption.</t>
 </list></t>
 
 </section>
@@ -190,7 +212,7 @@ illustrate the range of use cases this mechanism enables:</t>
 <section anchor="coordinated-ns-record-management"><name>Coordinated NS Record Management</name>
 
 <t>A zone owner uses two DNS providers - one signs and serves the zone
-while another only serves it. Through HSYNC records, the zone owner
+while another only serves it. Through the HSYNC RRset, the zone owner
 signals to both providers who is authorized to do what. The providers'
 Agents establish secure communication channels, allowing them to
 coordinate NS RRset management across all authoritative nameservers
@@ -201,118 +223,106 @@ providers.</t>
 </section>
 <section anchor="multi-provider-dnssec-redundancy"><name>Multi-Provider DNSSEC Redundancy</name>
 
-<t>A zone owner needs to eliminate the single point of failure in their
-DNSSEC setup. By contracting with multiple "multi-signer capable" DNS
-providers and using appropriate HSYNC records, each provider can:</t>
+<t>A zone owner needs to eliminate the "signing" single point of failure
+in their DNSSEC setup. By contracting with multiple "multi-signer
+capable" DNS providers and using data from the HSYNC RRset, the zone
+owner enables each provider to:</t>
 
 <t><list style="symbols">
-  <t>Receive the unsigned zone via zone transfer</t>
-  <t>Discover other authorized providers via HSYNC records and establish
-secure communications</t>
-  <t>Coordinate DNSKEY, CDS, CSYNC and NS RRset management</t>
+  <t>Locate other designated providers via the HSYNC RRset and establish
+secure communications.</t>
+  <t>Coordinate DNSKEY, CDS, CSYNC and NS RRset management.</t>
   <t>Sign the zone using its own DNSKEYs while publishing a DNSKEY RRset
-that includes keys from all authorized signers</t>
+that includes keys from all authorized signers.</t>
   <t>Distribute the signed zone to its authoritative nameservers and
-possibly to non-signing downstream providers</t>
+possibly to non-signing downstream providers.</t>
 </list></t>
 
-<t>This creates a fully redundant DNSSEC infrastructure with no single point of failure.</t>
+<t>This creates a fully redundant DNSSEC infrastructure with no single
+point of failure.</t>
 
 </section>
 <section anchor="provider-transition-management"><name>Provider Transition Management</name>
 
 <t>A zone owner wishes to replace their current DNSSEC-signing provider
-with a new one. Using HSYNC records, they can:</t>
+with a new one. Using the mechanism provided by the HSYNC RRset, they
+are able to:</t>
 
 <t><list style="symbols">
-  <t>Add a new HSYNC record with State="ON" for the incoming provider, initiating the onboarding process</t>
-  <t>Allow the automated synchronization between providers to handle key exchange and transition</t>
-  <t>Once the new provider is fully operational, change the HSYNC State for the outgoing provider to "OFF"</t>
-  <t>The providers then automatically coordinate the safe removal of the outgoing provider's keys</t>
+  <t>Add a new HSYNC record with State="ON" for the incoming provider,
+initiating the onboarding process.</t>
+  <t>Allow the automated synchronization between providers to handle key
+exchange and transition.</t>
+  <t>Once the new provider is fully operational, change the HSYNC State
+for the outgoing provider to "OFF" when convenient.</t>
+  <t>The providers then automatically coordinate the safe removal of the
+outgoing provider's data.</t>
 </list></t>
 
-<t>This entire process maintains continuous service and valid signatures while transitioning between providers.</t>
+<t>This entire process maintains continuous service and valid signatures
+while transitioning between DNS providers.</t>
 
 </section>
 <section anchor="delegated-ns-management"><name>Delegated NS Management</name>
 
-<t>A zone owner wants DNS providers to handle NS RRset management while retaining control of other zone data. By setting the NSMgmt field to "AGENT" in the HSYNC records, the zone owner explicitly delegates NS management responsibility to the providers. The providers' Agents then coordinate to maintain a consistent NS RRset across all authoritative servers, adding or removing nameservers as needed based on the current set of authorized providers.</t>
+<t>A zone owner wants DNS providers to handle NS RRset management while
+retaining control of other zone data. By setting the NSMgmt field to
+"AGENT" in the HSYNC RRset, the zone owner explicitly delegates NS
+management responsibility to the DNS providers. The DNS providers then
+coordinate to maintain a consistent NS RRset across all authoritative
+servers, adding or removing nameservers as needed based on the current
+set of authorized providers.</t>
 
 </section>
 <section anchor="phased-migration-to-multi-provider-architecture"><name>Phased Migration to Multi-Provider Architecture</name>
 
-<t>A zone owner currently using a single provider wants to implement a more robust architecture but prefers a gradual transition. They can:</t>
+<t>A zone owner currently using a single provider wants to implement a
+more robust architecture but prefers a gradual transition. They can:</t>
 
 <t><list style="symbols">
-  <t>First add a single HSYNC record designating their current provider, making no immediate operational changes</t>
+  <t>First add a single HSYNC record designating their current provider,
+making no immediate operational changes</t>
   <t>Later add a second HSYNC record to designate an additional provider</t>
   <t>Allow the providers to automatically coordinate the transition</t>
-  <t>Optionally delegate NS management to the providers by changing NSMgmt from "OWNER" to "AGENT"</t>
+  <t>Optionally delegate NS management to the providers by changing
+NSMgmt from "OWNER" to "AGENT"</t>
 </list></t>
 
-<t>This approach enables a controlled, phased migration to a more resilient multi-provider architecture.</t>
+<t>This approach enables a controlled, phased migration to a more
+resilient multi-provider architecture.</t>
 
 </section>
 </section>
-<section anchor="the-distributed-multi-signer-model"><name>The Distributed Multi-Signer Model</name>
-
-<t>The primary difference between monolithic and distributed multi-signer
-is that the former has a central "controller" while the latter
-doesn't. But there is still an absolute need for synchronization
-between the different participants in the distributed multi-signer
-setup.</t>
-
-<t>There are three immediate aspects for the design of a distributed
-multi-signer architecture:</t>
-
-<t><list style="symbols">
-  <t>The first is "transport": how to communicate between the
-individual instances in a multi-signer system.</t>
-  <t>The second is "synchronization": who decides what changes are
-needed where.</t>
-  <t>The third is source of truth for different types of zone data. The
-zone owner is the source of truth for all unsigned zone data,
-except DNSSEC data. The signer is the source of truth for all
-DNSSEC data in the zone. Traditionally, the source of truth for the
-NS RRset is the zone owner, but with multiple DNS Providers having
-the option of moving that responsibility to the DNS Providers would
-be an important improvement.</t>
-</list></t>
-
-<section anchor="the-agent-integrated-signer-vs-separate-agent-johani-omskriven-20250228"><name>The Agent: Integrated Signer vs Separate Agent (johani: omskriven 20250228)</name>
+<section anchor="the-agent-integrated-signer-vs-separate-agent"><name>The Agent: Integrated Signer vs Separate Agent</name>
 
 <t>In a distributed setup there must be a service located with each
 DNS Provider that manages communication with other DNS
 Providers. This is referred to as the Agent.</t>
 
 <t>It is possible to implement support for the synchronization and
-communication needs directly into each "Signer" (i.e. typically an
-authoritative nameserver with the ability to do online DNSSEC
-signing). In this case the Signer implements the Agent functionality.</t>
+communication needs directly into an existing component of the
+provider's provisioning infrastructure (which may be as simple as an
+authoritative nameserver with or without the ability to do online
+DNSSEC signing). In that case this component implements the Agent
+functionality.</t>
 
 <t>However, it is also possible to separate the synchronization and
 communication needs into a separate agent. This Agent sits next to the
-Signer, and is under the same administrative control (the "DNS
-Provider"), but is a separate piece of software. When using this
-design each Signer has an Agent attached next to it. Each Agent is
-configured as a "secondary nameserver" to a Signer and receives the
-(signed) zone from this Signer.</t>
+existing infrastructure, and is under the same administrative control
+(the "DNS Provider"), but is a separate piece of software. Each Agent
+is configured as a "secondary nameserver" and receives the (usually
+signed) zone. In this document the functional separation using a
+distinct Agent is used for clarity, not as a statement on preferred
+implementation choice.</t>
 
 <t>The "separate Agent" design has the major advantage of leaving the
-Signer entirely out of the synchronization and communication complexity. The
-requirements are only that the Signer treats the Agent as a normal
-secondary (sends NOTIFY messages and responds to zone transfer
-requests) and that the Agent has a mechanism that allows it to make
-changes to zones upstream of the Signer to satisfy the synchronization
-requirements for certain RRsets in the apex of the zone.</t>
-
-<t>In this document the design using a separate Agent is used, while
-pointing out that it is possible to integrate this into a future
-"Signer" that implements both DNSSEC signing and the Agent
-functionality.</t>
+DNSSEC-signer (if any) outside of the synchronization and
+communication complexity. The requirements are only that the Agent is
+treated as a normal secondary (it receives NOTIFY messages and is able
+to request zone transfers).</t>
 
 </section>
-<section anchor="source-of-truth-johani-omskriven-20250228"><name>Source of Truth (johani: omskriven 20250228)</name>
+<section anchor="source-of-truth"><name>Source of Truth</name>
 
 <t>A common design for DNSSEC signing (regardless of multi-signer) is to
 use a separate, bump-on-the-wire Signer. This is a Signer that
@@ -320,7 +330,7 @@ receives the unsigned zone via an incoming zone transfer, signs the
 zone, and publishes the signed zone via an outbound zone transfer. In
 such a design the source of truth has been split up between the "zone
 owner" (source of truth for all non-DNSSEC zone data), and the Signer
-(source of truth for all DNSSEC data in the zone).</t>
+(source of truth for all DNSSEC data in the zone plus the DNSKEY RRset).</t>
 
 <t>In the proposed architecture the source of truth is further split up
 into three participants:</t>
@@ -332,15 +342,15 @@ except DNSSEC data and possibly the NS RRset.</t>
 signing: own DNSKEYs, NSEC/NSEC3 RRs, RRSIGs, etc.</t>
   <t>The Agent is the source of truth for the RRsets that must be kept in
 sync across all the Signers for the zone. This includes the DNSKEYs
-from other Signers, CDS and CSYNC RRsets. Possibly also the NS RRset.</t>
+from other providers, CDS and CSYNC RRsets. Possibly also the NS RRset.</t>
 </list></t>
 
 <t>The NS RRset is an interesting special case. Traditionally the NS
 RRset is maintained by the zone owner, but based on data from the DNS
 providers (as authoritative nameservers is a primary service for the
-DNS provider). However, in the proposed architecture the
-NS RRset should preferably be maintained by the Agents. For this reason
-the proposed design makes control of the NS RRset explicit and the
+DNS provider). However, in the proposed architecture the NS RRset
+should preferably be maintained by the Agents. For this reason the
+proposed design makes control of the NS RRset explicit and the
 responsibility of the zone owner to choose whether to retain control
 or delegate to the Agents. Hence:</t>
 
@@ -360,7 +370,7 @@ owner as simple as possible (i.e. not involved in the details of the
 multi-signer automation) these changes must be introduced into the
 unsigned zone after the zone leaves the zone owner.</t>
 
-<section anchor="the-combiner-johani-omskriven-20250228"><name>The Combiner (johani: omskriven 20250228)</name>
+<section anchor="the-combiner"><name>The Combiner</name>
 
 <t>The consequence of these requirements is that the DNSKEY, CDS and
 CSYNC RRsets (and possibly the NS RRset) are maintained via a separate
@@ -381,12 +391,13 @@ the zone data received from the zone owner.</t>
   <t>Whenever it receives a new unsigned zone from the zone owner it
 COMBINES zone data from the zone owner (the majority of the zone)
 with specific zone data under control of the Agent: three specific
-RRsets, all in the apex of the zone: the DNSKEY,CDS and CSYNC
-RRsets.</t>
+RRsets, all in the apex of the zone: the DNSKEY, CDS and CSYNC
+RRsets. According to zone owner policy expressed in the HSYNC RRset
+it will also update the NS RRset.</t>
   <t>It is policy free (apart from being limited to the four specified
-RRsets). I.e. the Combiner is not making any judgement
-about what data to include in the zone from the four defined
-RRsets.  That judgement is the role of the Agent.</t>
+RRsets). I.e. the Combiner is not making any judgement about what
+data to include in the zone from the four defined RRsets. That
+judgement is the role of the Agent.</t>
   <t>It does not sign the zone.</t>
   <t>It provides outbound zone transfer of the combined zone to the
 Signer.</t>
@@ -419,8 +430,7 @@ between the zone owner, the Combiner, the Signer and the Agent:</t>
 ]]></artwork></figure>
 
 </section>
-</section>
-<section anchor="the-dns-provider-johani-omskriven-20250228"><name>The DNS Provider (johani: omskriven 20250228)</name>
+<section anchor="the-dns-provider"><name>The DNS Provider</name>
 
 <t>A "DNS Provider" is a term that is most commonly used to refer to an
 entity that provides authoritative DNS service to one or more zone
@@ -447,24 +457,24 @@ services.</t>
 
 </section>
 </section>
-<section anchor="identifying-the-designated-signers-johani-omskriven-20250228"><name>Identifying the Designated Signers (johani: omskriven 20250228)</name>
+<section anchor="identifying-the-designated-dns-providers"><name>Identifying the Designated DNS Providers</name>
 
 <t>It is the responsibility of the zone owner to choose a set of "DNS
-Providers", either internal or external to the zone owners
+Providers", either internal or external to the zone owner's
 organization. These DNS Providers MUST be clearly and uniquely
 designated via publication in the HSYNC RRset, located at the apex of
 the zone and consisting of one HSYNC record for each signer.</t>
 
 <t>The HSYNC RRset MUST be added, by the zone owner, to the, typically
 unsigned, zone that the zone owner maintains so that this RRset is
-visible to the downstream DNS Providers and their multi-signer agents.</t>
+visible to the downstream DNS Providers and their Agents.</t>
 
 </section>
-<section anchor="the-hsync-rrset-johani-omskriven-20250228"><name>The HSYNC RRset (johani: omskriven 20250228)</name>
+<section anchor="the-hsync-rrset"><name>The HSYNC RRset</name>
 
 <t>The HSYNC RR has the zone name that publishes the HSYNC RRset as the
 owner name (i.e. the HSYNC RRset must be located at the apex of the
-zone). The RDATA consists of five fields "State","NSMgmt", "Sign" and
+zone). The RDATA consists of five fields "State","NSMgmt", "Sign",
 "Identity" and "Upstream":</t>
 
 <t>zone.example.    IN HSYNC  State  NSMgmt  Sign  Identity  Upstream</t>
@@ -472,19 +482,21 @@ zone). The RDATA consists of five fields "State","NSMgmt", "Sign" and
 <t>State:
     Unsigned 8-bit. Defined values are 1=ON and 2=OFF. The value 0
     is an error.  Values 3-127 are presently undefined. Values 128-255
-    are reserved for private use. The presentation format allows
-    either as integers (1 or 2) or as tokens ("ON" or "OFF").</t>
+    are reserved for private use. The presentation format MUST
+    use the tokens "ON" and "OFF".</t>
 
 <t>NSMgmt:
-    Unsigned 8-bit. Defined values are 1=Zone owner and 2=Agent. The
-    value 0 is an error. Values 3-255 are presently undefined (and not
-    expected to be defined). The presentation format allows either as
-    integers (1 or 2) or as tokens ("OWNER" or "AGENT").</t>
+    Unsigned 8-bit. Defined values are 1=Zone owner and
+    2=Agent. The value 0 is an error. Values 3-255 are presently
+    undefined (and not expected to be defined). The presentation
+    format MUST use the tokens "OWNER" and "AGENT".</t>
 
 <t>Sign:
-    Unsigned 8-bit. Defined values are 1=YES and 2=NO. The value 0 is an
-    error. If Sign=YES for a particular HSYNC record, then the signer
-    associated with that Identity is a designated signer for the zone.</t>
+    Unsigned 8-bit. Defined values are 1=SIGN and 2=NOSIGN. The value
+    0 is an error. If Sign=YES for a particular HSYNC record, then the
+    signer associated with that Identity is a designated signer for
+    the zone. The presentation format MUST use the tokens "SIGN" and 
+    "NOSIGN".</t>
 
 <t>Identity:
     Domain name. Used to uniquely identify the Agent for the DNS Provider
@@ -494,33 +506,41 @@ zone). The RDATA consists of five fields "State","NSMgmt", "Sign" and
     Domain name. Used to uniquely identify the upstream DNS Provider
     that this DNS Provider is a downstream of. The special case of "."
     is used to signal that this DNS Provider either has no upstream
-    (is the zone owner), or that the upstream is configured manually.</t>
+    (is the zone owner), or that the upstream is to be configured
+    manually.</t>
 
 <t>Example:</t>
 
 <t>zone.example.   IN HSYNC  ON  AGENT  SIGN  agent.provider.example. upstream.</t>
 
-<section anchor="semantics-of-the-hsync-state-field-johani-omskriven-20250228"><name>Semantics of the HSYNC State Field (johani: omskriven 20250228)</name>
+<section anchor="semantics-of-the-hsync-state-field"><name>Semantics of the HSYNC State Field</name>
 
-<t>The HSYNC State field is used to signal to all Agents what the status of
-each DNS Provider is from the point-of-view of the zone owner. The two
-possible values are "ON" and "OFF" where "ON" means that the DNS Provider
-is a currently a designated DNS Provider for the zone and "OFF" means that the
-DNS Provider is previously a designated DNS Provider for the zone that is in
-the process of being offboarded.</t>
+<t>The HSYNC State field is used to signal to all Agents what the status
+of each DNS Provider is from the point-of-view of the zone owner. The
+two possible values are "ON" and "OFF" where "ON" means that the DNS
+Provider is a currently a designated DNS Provider for the zone (or in
+the process of being on-boarded and "OFF" means that the DNS Provider
+is previously a designated DNS Provider for the zone that is in the
+process of being offboarded.</t>
 
-<t>The reason for the "OFF" state is that the offboarding process
-involves the remaining DNS Providers (hence the signalling) and it is
-important to know which DNS Provider is being offboarded so that the
-correct data may be removed in the correct order during the multi-signer
-"remove signer" process (see <xref target="RFC8901"/>).</t>
+<t>One use for the "OFF" state is that the offboarding process involves
+the remaining DNS Providers (hence the signalling) and it is important
+to know which DNS Provider is being offboarded so that the correct
+data may be removed in the correct order, eith during the multi-signer
+"remove signer" process (see <xref target="RFC8901"/>) or, a simpler "remove auth
+nameserver" process.</t>
 
 <t>Once the offboarding process is complete the HSYNC RR for the
-offboarded DNS Provider may be removed from the zone at the zone owners
-discretion.</t>
+offboarded DNS Provider may be removed from the zone at the zone
+owners discretion.</t>
+
+<t>Another use for the State=OFF is during initial setup of a new DNS
+provider. As long as State=OFF, no data from the provider must be used
+by other providers. However, it is possible to verify that
+communication, etc, works as intended.</t>
 
 </section>
-<section anchor="semantics-of-the-hsync-nsmgmt-field-johani-omskriven-20250228"><name>Semantics of the HSYNC NSMgmt Field (johani: omskriven 20250228)</name>
+<section anchor="semantics-of-the-hsync-nsmgmt-field"><name>Semantics of the HSYNC NSMgmt Field</name>
 
 <t>The NSMgmt field is used to signal to the Agents who is responsible for
 the contents of the NS RRset for the zone. The two possible values are
@@ -536,11 +556,11 @@ sign the zone are responsible for the contents of the NS RRset. In
 this case the these Agents MUST instruct the local Combiner to update the NS
 RRset with the unified NS RRset data from all Agents.</t>
 
-<section anchor="limitation-of-scope-for-ns-management-johani-omskriven-20250228"><name>Limitation of Scope for NS Management (johani: omskriven 20250228)</name>
+<section anchor="limitation-of-scope-for-hsync-based-ns-management"><name>Limitation of Scope for HSYNC-based NS Management</name>
 
-<t>For the purpose of this document the NSMgmt Field only covers the NS
-RRset. I.e. it does not include the address records of in-bailiwick
-authoritative nameservers. The reasons are:</t>
+<t>For the purpose of this document the NSMgmt Field in the HSYNC record
+only covers the NS RRset. I.e. it does not include the address records
+of in-bailiwick authoritative nameservers. The reasons are:</t>
 
 <t><list style="symbols">
   <t>Limiting the possibility of DNS Providers "polluting" the name space
@@ -558,16 +578,15 @@ document does not.</t>
 <section anchor="semantics-of-the-hsync-sign-field"><name>Semantics of the HSYNC Sign Field</name>
 
 <t>The Sign field is used to signal to all Agents whether the zone owner
-requests that the DNS Provider that the Agent represents should sign the
-zone or not. The two possible values are "SIGN" and "NOSIGN" where "SIGN"
-means that the Agent represents a currently designated DNS Provider for the
-zone and "NOSIGN" means that the Agent does not.</t>
+requests that the DNS Provider that the Agent represents should sign
+the zone or not. The two possible values are "SIGN" and "NOSIGN" where
+"SIGN" means that the Agent represents a a DNS Provider that should
+sign the zone and "NOSIGN" means that the Agent does not.</t>
 
 <t>When Sign=NOSIGN the Agent MUST still participate in the communication
-between Agents for the zone, but MUST NOT instruct the Combiner to
-update the NS RRset.</t>
-
-<t>XXX: johani: unless the zone is unsigned?</t>
+between Agents for the zone, to ensure proper synchronization of data
+between providers. If NSmgmt=AGENT, the Agent should still instruct
+the Combiner to update the NS RRset, otherwise no.</t>
 
 </section>
 </section>
@@ -576,7 +595,7 @@ update the NS RRset.</t>
 <t>For the communication between Agents there are two choices that need to
 be made among the designated Agents for a zone. The first is what
 "transport" to use for the communication. The second is what
-"synchronization" model to use when executing future multi-signer
+"synchronization" model to use when executing future synchronization
 processes.</t>
 
 <t>The two defined transport alternatives are:</t>
@@ -601,16 +620,17 @@ EDNS(0) Option (see section NNN below).</t>
 </list></t>
 
 <t>Just as for transport, supported synchronization models are signaled
-in the Provider-Synchronization EDNS(0) Option (see section NNN below).</t>
+in the Provider-Synchronization EDNS(0) Option (see section <xref target="provider-synchronization-edns0-option-format">Provider-Synchronization EDNS(0) Option</xref> below).</t>
 
 <t>Regardless of the synchronization model and communication method used,
-the Agents SHOULD exchange all needed information about the zone and the
-DNS Provider they represent to enable the multi-signer processes to
-execute correctly. This includes notifications about changes to
-DNSKEYs, changes to the NS RRset, etc. Depending on synchronization
-model it may also include instructions for changes to the zone.</t>
+the Agents SHOULD exchange all needed information about the zone and
+the DNS Provider they represent to enable the synchronization
+processes to execute correctly. This includes notifications about
+changes to DNSKEYs, changes to the NS RRset, etc. Depending on
+synchronization model it may also include instructions for changes to
+the zone.</t>
 
-<section anchor="agent-communication-via-dns-johani-omskriven-20250228"><name>Agent Communication via DNS (johani: omskriven 20250228)</name>
+<section anchor="agent-communication-via-dns"><name>Agent Communication via DNS</name>
 
 <t>This transport alternative is based on the observation that all the
 communication needs between Agents can be expressed via DNS
@@ -626,7 +646,7 @@ a similar problem for delegation synchronization between child and
 parent, which has already been implemented and shown to work.</t>
 
 </section>
-<section anchor="agent-communication-via-rest-api-johani-omskriven-20250228"><name>Agent Communication via REST API (johani: omskriven 20250228)</name>
+<section anchor="agent-communication-via-rest-api"><name>Agent Communication via REST API</name>
 
 <t>REST APIs are well-known and a natural fit for many distributed
 systems. The challenge is mostly in the initial setup of secure
@@ -842,7 +862,7 @@ for this zone.</t>
 
 </section>
 </section>
-<section anchor="provider-synchronization-edns0-option-format-johani-omskriven-20250228"><name>Provider-Synchronization EDNS(0) Option Format (johani: omskriven 20250228)</name>
+<section anchor="provider-synchronization-edns0-option-format"><name>Provider-Synchronization EDNS(0) Option Format</name>
 
 <t>This document uses an Extended Mechanism for DNS (EDNS0) <xref target="RFC6891"/>
 option to include DNS Provider synchronization information in DNS
@@ -1435,6 +1455,35 @@ Specification Required review <xref target="BCP26"/>.</t>
 
 
 
+<reference anchor='I-D.draft-ietf-dnsop-dnssec-automation' target='https://datatracker.ietf.org/doc/html/draft-ietf-dnsop-dnssec-automation-03'>
+   <front>
+      <title>DNSSEC automation</title>
+      <author fullname='Ulrich Wisser' initials='U.' surname='Wisser'>
+         </author>
+      <author fullname='Shumon Huque' initials='S.' surname='Huque'>
+         <organization>Salesforce</organization>
+      </author>
+      <author fullname='Johan Stenstam' initials='J.' surname='Stenstam'>
+         <organization>The Swedish Internet Foundation</organization>
+      </author>
+      <date day='19' month='October' year='2024'/>
+      <abstract>
+	 <t>   This document describes an algorithm and protocol to automate the
+   setup, operations, and decomissioning of Multi-Signer DNSSEC
+   [RFC8901] configurations.  It employs Model 2 of the multi-signer
+   specification, where each operator has their own distinct KSK and ZSK
+   sets (or CSK sets), Managing DS Records from the Parent via CDS/
+   CDNSKEY [RFC8078], and Child-to-Parent Synchronization in DNS
+   [RFC7477] to accomplish this.
+
+	 </t>
+      </abstract>
+   </front>
+   <seriesInfo name='Internet-Draft' value='draft-ietf-dnsop-dnssec-automation-03'/>
+   
+</reference>
+
+
 <reference anchor='I-D.draft-berra-dnsop-keystate' target='https://datatracker.ietf.org/doc/html/draft-berra-dnsop-keystate-01'>
    <front>
       <title>Signalling Key State Via DNS EDNS(0) OPT</title>
@@ -1472,35 +1521,6 @@ Specification Required review <xref target="BCP26"/>.</t>
       </abstract>
    </front>
    <seriesInfo name='Internet-Draft' value='draft-berra-dnsop-keystate-01'/>
-   
-</reference>
-
-
-<reference anchor='I-D.draft-ietf-dnsop-dnssec-automation' target='https://datatracker.ietf.org/doc/html/draft-ietf-dnsop-dnssec-automation-03'>
-   <front>
-      <title>DNSSEC automation</title>
-      <author fullname='Ulrich Wisser' initials='U.' surname='Wisser'>
-         </author>
-      <author fullname='Shumon Huque' initials='S.' surname='Huque'>
-         <organization>Salesforce</organization>
-      </author>
-      <author fullname='Johan Stenstam' initials='J.' surname='Stenstam'>
-         <organization>The Swedish Internet Foundation</organization>
-      </author>
-      <date day='19' month='October' year='2024'/>
-      <abstract>
-	 <t>   This document describes an algorithm and protocol to automate the
-   setup, operations, and decomissioning of Multi-Signer DNSSEC
-   [RFC8901] configurations.  It employs Model 2 of the multi-signer
-   specification, where each operator has their own distinct KSK and ZSK
-   sets (or CSK sets), Managing DS Records from the Parent via CDS/
-   CDNSKEY [RFC8078], and Child-to-Parent Synchronization in DNS
-   [RFC7477] to accomplish this.
-
-	 </t>
-      </abstract>
-   </front>
-   <seriesInfo name='Internet-Draft' value='draft-ietf-dnsop-dnssec-automation-03'/>
    
 </reference>
 
@@ -1547,352 +1567,351 @@ draft-leon-dnsop-distributed-multi-signer-00</t>
   </back>
 
 <!-- ##markdown-source:
-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
-AR2jce1X0wAA
+H4sIANmexWcAA+1923Ybx7Xge31FDfxg0gIgkfJF5hwnhyIpi7FE6pBUPE5O
+JqsBFMi2gG6c7gYp2FJWPuTM63zC/MD8Sb5k9rUujQZJOXJW1lnDFTkk0F21
+a9eufd+7BoOBafJm5vZs7zy/LLJZXlzaP5SFs6c3havscdG4oumZbDSq3PVd
+T03KcZHNYbBJlU2bwcyVxWBS1OViUOtrg5/gtUGJrw1yem3w6JGZZA289fPh
+/sXRezOGPy7LarVn62ZiTL6o9mxTLetm99Gjrx/tmqxy2R7NWRWuMTdl9eay
+KpeLPXt4cn76yn4PHyCA3+KH5o1bwROT8MLgEIEzpm6yYvLnbAbw7NmVq80i
+37N/bMpx39Zl1VRuWsNvqzn+8idjsmVzVVZ7xg6MhZ+8qPfsi6F9BmPCOO4n
++pRX/wLW3fqirC6zIv8pa/Ky2LMXV86e37hJXl95sOyzcllM6AF6Ywx/NogE
+fNDxZ26e5bM9i3gdTnX8f81lhLrJp42b1a4Y1i6B82hon7rqsm6q//t/5hGg
+R1X+pv3NR4XUwQTDEU9Qzu8B6e+G9hyIAvYmhvN35VVWpF98VDB/xPGHtYx/
+DzDPh/agKsdvXBVBCfBdu+TzFMijyaWbl2Vlz1ztsmqMoMIUzbJxKYCvi7xx
+ExgPDkIdw1njDP9aX+XFm2VVDsfl3JiirOYwwbXbg6NSTKO/BoOBzUaA+WwM
+5H5xldcWDuhyDmcOVgEbMlmOXW0zSychqyb5TzDr3I0BGXk9tzCWxdNq6bTW
+tikNH2PbXLm8snx8beUu8V04cHD87KIqr/MJ8ITK1YuyqPNRPsubHOZpruA8
+Xl4ZfCpvajebDu1xYydumhcERuFuaIizs2a1cH37/PyHkwO79byscgCjyWbm
+fFWMYRRF6XYfBs0a64psNIMhUmBhZAK3cfbmKh9fGQUN5qqc5fNMS4Zna1fB
+3gEaHsKi8TVZIw4JbGBcIr5m5ubKweeVDUPB4/BJNLWdZ0V2Set1llZTu6aP
+Q9t64cb5dGXoYdiWooZDbAHdeYEzTPPLZUULq4e4X04wULkxMDCbzWblTZ0g
+mZeZ1+PyGgZyGZBUSfDBbMbBto5meCJqN17CioFc5ssiH9MUOG1RAHH3rcvp
+nes8o8Hnrq5xAYZfm9jRyp4ff7v1aNsyPuFDWje+kNmzo/OL6XJm918d2+iN
+ixdwRpDmPNoHTTnw1JHCgiPtXwIx1X4vYXtKoGQ3MWM4MkBe/CTSZJPVb2pb
+L2G1We1RLHhH6u7bBMN13yD2YW3nRweDys1wWFsunCKb4JTd8ehBlPImKtBG
+Mb2i3UyX4LFNxyvDwRrdRn/qlNabm5KoHUjK0R5OszEeE6TVhmBJCX3PIByE
+oXCuZo6wcQ/0IrQwgDko56McSZTOA2x0hXS6LHBbASOENGCYmZ0Cs26T9Q1Q
+iWEcT6KnPCnCWr+/ygGoDCmyqfLREtHMWLfz5azJSQtA6gTeBxxujJRkt+p8
+ns+yCtFgevNy4mZ2twfMxZ49O3jy9aOdbQsIAfafzxcgljPE7mIx07WVU8bY
+tAIejKpA3xKy+OgEZlYvF/h6bUdVmU2iI9zGNWyMmwBN8NYpUaw9lc1ARQGU
+zGvahWR9nrSQ0RhgQ2PABuAC1vTzz789HhwOWT/KXTMV/Qj+C4dnIFQPr75/
+D5IwpkiD01yVN4gn93YBZEDUWbsYFOIDXRRhUooAhM3ctCHQYSNLZC2D5cJT
+KhLuqX16BKf75envjw73bEt8AB4dsvwxvJqNyoqPVIFL/BZAWY5s1uyZP141
+zaLee/jwkj5DgfWQZG3+9uGHqIh/2vpIA20PaVfnZY0HaYxLuRFtEY+7J6hw
+Zvu4m4iweomCwDWoHl6VyxkxZMCCya5BNiPTwvcqN7SkjbB4qe3WJeIGGORs
+tW2z8dgtGruAv2D6/4ARiUegoJ7nk8nMGfMJ6i8kmmnTSVrGcq0EjYRpFAkB
+gaeTyQS4ACDa8sGwaIvEGfI7pJvw1Dxb2asMnprkU2CYsGyzJr4HoBXPHT2q
+8pGG64fPy2K2Ekmas8gz/rtJaUcgm2DuKpvkuDZA36pPwySyTzYghs8IA8s7
+tIqrDEkRUALEAAicqJqB4mAJqgoMAkpO7XgQfzT8ufYcgpl1TOR4xkgm/XNr
+SKIEiXqA4BgPDmiBn9nDVA+K9l0I2VMIvT3Ed5j1rKwqPKRbBJYp78V0QK8d
+sJ5kf6melMyN/DPs2AxU3xkzQB2npUIJVCPg2q5ZLmisI1InUoVpVqKF2VKX
+7O3qEgz2dAUHl57AnSSh4/Vt5nwIGGxPP6EJsClwNNieSAFF3gNKOlJ+nddE
+JOkhiEYW9UQUI+MVI5soRiPX3OAxCHMEVWmWv3FECR26EvCkqgRR4vlHLNA/
+s/sTPqy4fxVYL9dA23BA04cucB/yBAzPSIhIWFK0FNzP7MsABYzZ0s9Y662R
+lIoAHUtY1uCXtZvQOH+4S5+Gp74ryhtgD5dOprInpxfHz34AgfzfQM/Y+frr
+L9+/t6Im2sMVWHTAHF4vJmSC8UO7O4/1If7g8aNHX8EHqJ6AeJgDNPS2KMsE
+UMZsPFKcEXJlMaoT0OhfP94BoQ8S4BMwEP9jmVeEGVBwy4YVABJdb9wKuT4g
+pvfZZy9fn1989lmvr7/jovTvs6N/e318dnSof58/33/xAv8w+kf89Pnz09cv
+DtO/0tEOTl++PDo55AFxDPjWtj4mOPZ/oF8RTfDn6auL49OTfZyZj0jEYdGT
+gwcSTiyZ3MBwESXA0ROd6enBK7vzuaJpZ+drwDn/8WTnq8/fv0errOAJSQLx
+n3AYV6gpgqWNg6CwHmcL0LHR5MmI992A1ECJjVL3wlXzvChn5eXKmFdC3nto
+fB8XKqQa97bxCqcXE/glAD+3PT0VPZjtJlshf5gg/yDzPrO9mPsDhvIhKAug
+2MIgebNiLi5fs5mHfDkH6dXH993lUI+IHikxV8WSbcjuJ1+EvDg0wyEtLqYn
+JqMqpjDSAotULfcWSVtsmTVNGAmaRBRtHSuT9Z4/mMIHiT5hp1lTKq0KylJk
+ZaK3GJvw1no5BVmdI7anIkgSjg6/AA5BZLRMYHs3VwcWB5ThVUY2aiIpBaOn
+GpWcDVjJOKuqHNXeZQMzoQ1LZpEIAhKqE1GRSAiw2GBRbddlAVpo1tawfZtl
+gc3I+qnKtznKgNmKp8J3mnzuhnchHQwHsJzyBvU0L+FRJ2hjP9EMNrhF7pwt
+6EKqCcGHZTEqM3RnoAcum6gumEAgIo/GU5NojPoijAPPs5mM2CJcLCr6ZKNB
+51XAXwjwdBpB7N6CvG6fiV8TXlA7XHGZXbbn5GMrrKDfVq4IlEskq+XCWPVf
+sX2Ij/IpxTFFziKr47OwQQ7nsapHzxYre3B4rtRxQAY3qRcMOGiu4awsQMcg
+l8Vo2aBcsS/3Tw73L07PfvAnOj10wKZLmGbiZqA8M/5irUWsNK/QMBtBxU/l
+e6qipJhr77tohF1qICEvNp3J2or4zCir2fRlqvFHFV6UCckf1lph0BaJcQSP
+RVCDyYqMWbJgUzwZZE7hAAOGAIHff3XMf61BvaYe3joF2RJMX/MSp2m8hlfr
+ULg5XsmLHE+xlkfIAvaokozFfLVcCPP9hBCg0ta23Lv2HAz0rMrLOvaGekdP
+cOlk9hoecyBDYe9rfQn1gCpGem3UbPaas9tgN5OJHB0SP6jJZ7MlutSFJAEv
+rFKCMgoCoSZ7BlhBsBFFb98jxe7ATzwh2mXPbtCDjdmPqWRZi7MwJd+BxUfw
+6NfsV0YuXXsSA32I/HAFE2iwyuEQN7gyNpBbNNdmIWLJknwlUgvz31yVpPQm
+HnQw8G9AuDHm/LOfGvXr3tcbnSnOAZw5WtTRZt1iv6BM7VaEcOOVDsUpQGR4
+jToDm1fJ0RyDKjQB2Thx3owFKEA1FbOCGekUgVHeCAclYlR5nZr2K+FOJj58
+QAwvyWfoqV88pWdugmGrYrxqEQP5JUmIz/I54wN3rCcioAcEUVyiAVfmzCCn
+WT5DDpYXQcXCGdg6RsFCq0ETBdCdepF6sUPTgOKMRNxr0SHS3hJnbXmNO6mK
+nRLev586FMRT8YL5MNOtD99Moik7mGXKtlF36SCwGmUWOSg8McFavjv6oY8y
+rC/SC0fqoDH2SsTODll2DoSNVgQPhQcDD17kJcjkKx4SQCD9Ly/GsyUq+WDM
+1Yy2iHzxPImZK0Afen86C7nIXY/Kb1NvpnxRg0X8EiUWZeEtiAlAD2O7LHXk
+kzYzho8bcjuR9xJomgmzUToCYVdl8PaSZQcRUFEKGZo2GTLNe2qPfAYb2d8N
+YJHjI5VbzLKxejFhe0nqtMwhb6EQJOwtQ23Fvq6Fn0RsuS2b2zS7IuNUFIQ9
+cYXIoElYjiajUO03vdOTnldnYJPLeQxWn4waUgcVHNGF5SlU+tQiETdXcPa0
+lcR1fw+giX2gSFakqeJaL1mtCQKcZjgtGJm0HH8KMYxCW+0DGNmsb2WUgCRa
+LEygKwXGelnGK0VQeqfPnvXYeQNcBnhtrgcpkQ84QNHSmSOGz9bN1MW+J9ak
+1yb9tCYupNSLzL1yilY4zECN8K8mnpcXy3JZe60EEQSD55MowClCNOAN51Kk
+t/VLIOxD4f/EQDZTdIaycC2EK/vWJd4IDJE+4kZTAcRs0kftiKPD2566Ts5f
+Xs7BYs7dDCW06e1/e3Ry0VPd8xbZH9uJKtgw0moiwDpFXJcW1Vot7Hcs0uE9
+3Rs4XZE/1CNjk4A3wuL6ZEXCmtVFib8nLLAm2YlnPdbVhYsYsRki7tva2ldX
+9NrL/FIMcoC5Jbv3IyW6teUyDWCSZUbm5bS+zESBnHwOopeVGjMvgXqrcgTK
+ZqqiowG1qNyUVmYBpAlqNNH5RqSvUIshrvUsr3AE4l0yccK+VMoK0UTcNeZb
+84xiZAXCOHcTsl8jJiE8oiYZDt9VOiHMAWcrmTBJzECvU3ABeAae8MDkpNzK
+KQISiMctNMoUlDNMbwgkLDQbJgBZQCuBtcKi9fygfO6dfn9ydNYjzsbHSPgM
+WfSoy/jEBT2iMzfp2wXTzjymnczi5mKEDY4OwsG6lqeHeLvZN6nBf05iu+Ro
+6zkHm69re+4WGVkk9JAxx0UrCE8aH4cnYTKgB7R9Pftj63cSLFuTWGWksmiw
+psMWZjYEr3i3qWZUkCIMhFqxhZCxiUJAwrqOKYzsHQMJ/auNqyJmzedYTFoR
+bdaOJ8Dzxw35XXDCIrhr4GlgV8F1YCK5Qb/WwuNbWs2W5EpkK0IaCA2CEn/L
+CrNJ7xLMVN4AJmEeWOUE/WCzHLRi1clZh9kesrsZMI7GJBsTAXSPoAiTZros
+xkzpMDjg9Xl54wCEPiiGZKXN6jLBcq3U8iGIZXyGdzPaRN5mzkupUQ8t0EMu
+1o5HfYpRdtTnmHcyEWcU+S+zCWhLOZnWEhmjjKstsnFiguxt94kJ5nUM0CJ3
+YzLE63La3GQYhz/CY8k4IiyyZ4K91BnYTcScsmoV7VuPgBOPLCN5a1kvkYkY
+Vru32QPG29QOA4StUMAQg8L3MX0I8DFuBGGIAuQNSOPjWQZUtOoDh20YvBqV
+LHZ1FcLvAXTjKUDN5pL8/OQf6dUJH+gJn6UQObvPfkRH/+Qa5E3GXouZy66F
+85tIm4Z92cpBJBarbVS0arSFxeN2N8Eguc5g84EY7VqoAZVqckgQjYesprw2
+DdkbsjuU1TizYY+28ibsi8TuNFNNKQoZsCFrgVIrWllg28RLz8tlxYRyUcHh
+RWGN4JeFYgu3Iz2UdosD+DNUJOHF2DSm5CTQrdD9E6gRCXS+GIChBSsc3KAi
+ytw6MMZM+TciwiQUlyZkUZZdEcyJZFF98QLh/nGkgbIc2ACV4ToGgz0dYXJs
+OhgSteG0OkUGve8x1iDGQsZFDTpiY0GwqFpMRzXY+j271X6XIk2gyKENKkj2
++ut2XxPVBDVm4+vyahxuoWEWs2Wtaqi3unHfJYaHzveSnKWxRtW1SDKFKpJs
+ukxDPLC5qhwMlFWgg+QL1NxAzbKftZ1Ied05rC5gPeeOY3xvKT8oXh7tp7fe
+k1QJeEFnFlq6Y1YaEI6bYwVCEj5hKhxKiH0vdmj0Ybajg4f4n8c4ax/+c378
+LedBJQB4lrZpfvycgwOiUIga8gYXnFM2NrKWWNsPlFAnQQI9ROpFCRtOydKk
+r5Vp+klfIxVpmMK+UsySlGxlolzEAQbJQUTHoWOxRgE01H1BULfSmmQk419V
+E6crFsDSzJsmqSsN1aqgn25lt7l6iKssqnyO/FKVO0Gcia0w0DKCknDXyVAM
+GAkJsizKEGkj17Ew9vcO7TOamFTArGaTy/hZhL2AWeHq2KRNYjpqhPr81ZbJ
+Kc+ncSOQiDBD5Lm1qefWJL7aMgH5uSvGLhzne9F0yPCul6MfAW+q/lj0ugH8
+HXD211Ic1uM/L9niaq7c3fhhTQKTsBNB5bPVM/VZuno9k4aCiGQX8id91tOJ
+aGF3zFrgiqxznRuPSRmH0t44t4hObqoxqxoqaX9sNCrCMHEq8smunVbPMnzt
+wsQKSw4yk3PrR25aViGjDUlwrOJQBfGL/I27yWuEJYI68lR3Qg56CGZtoJqW
+F9fl7Drs3wTpbFarfZFmPPu83m38sg6Lv2VRJpUS2bRxUaQUVbco6MPbww4L
+JF7N9WY2hn4VVIqKsSpydUsxy+ugkrV2wSS7sLVRIm2TdhdxBC4QUKXIrKno
+WEvjKhRFsQYREVuqD0g9QbdVqesVvu1T3VX5DbG8qWMPHx/04ybEEfOiQyvS
+Y5duhjJoPOYx+kUkHkfK6pKTyCKOsYHO8WVBsuf/+2JnrRbi8ki92GRA5OxR
+fP0Ky+dwEPF/X4CoDh7NcK7RO5rVKw6EilFEKVLkCZgZazXZKZITLFBDtmxf
+5C9idP/VMXrhqhDmjxFRNyXlvakCIoiZtBYZTDn8HN/3xLDhtQ68f38F2g3a
+37G1wE777v1LWBsGaOzB6cunxydH53eUQ2x5i6olirb9Dvgc4zAS27wthi6u
+HdYs9aVADBQSVSaTLdzbeLa9rgPbJqeh3R+PS44zwKZHqxAJJfUEnbIIhwFs
+3uTof0Utiem5WxdVnw6NOsX1bGWoKzMKuWQAo5cNn10+mMtKV02JCwI0ukKQ
+1caHGwdH1ivuSLBP7Y/LiQaCR+howRg0DkLoRp8Sa4mJmeD3k+bW3DXF1YWM
+EEYWFQCrdZI9i5c9KR3D1kqK1u99Yl+37aXjjnmlIbonPEY4oDFHbzOSSezS
+IzrDBAGV5pjVqHrDrLxEpmGn6EmF8T0Zmm52209w3U+kuDBiJlVj/vKXv1Bd
+4qafB4Pk58GtD7+j/zJB4p/th99Oq3jkMDb89kAeSN55OGj9PIy+/Pf2l/zz
+7/EI8fP3/+EhHihoAhyyZo+PB/jnQyyVC5/wE/LMgwhf75QaKvvgX/ya2fUW
+YXjtk988CC++64CJBQV+GKAU3Oon8sg6TPzzbm3t//Men8Qbe53uaueY659c
++61uY1mH6x7Fz9WBYzk6LZp9sDZO+2t9rQvD9/65N37v85Pi95f8XOsID8Lh
++oAfeUsHeYfywb77wHHkrQcRKIzUDxpI3nqXoDUM9SEAPaB3WlzJD/XBIxHv
+VC099mujKzJ1dLNFT7nlnDdSc+UaOywposhylPRhUoYL05lNnjoNotxyzsh1
+aAVSxDEqHxremfmeByf2fYCgWjCwkiXgmmrlmuvOWvm5Zrir/Xar7gfP49si
+9oKj06ah3XWXCb3rs2t0gFZ+jWQjhUyZeI9qdi5qEFOVGtBFrp1fE6cBhYga
+5wlTXIY/4vySQhRhyrtsudnTSFuYHt8L6pGaGGmibGpne/wY2+3QB9K61Gps
+jALkMR0J29uGVaNy5nPdURnhRTcUZaTKDklcfBW8cJRICCBxUA2rY3scLmhc
+LwxWUOSLjdGVTi4uQdQphXhoPqNIJu/+sRQC6FYehhyyFG0SfSS17v5eJU9R
+vSTc2fM19Nw5AvNUMIdCfo/xTiN+Wpu4M4TWYyYQ+hzlMRj61YxLzpdFDkb8
+bGWi3DikdHL4a2lvR3aHRnjFvhcjIrh2uJydUi8okWJKPCEJ2yNpUc5erZro
+RTpLSKqeTDDy3eHnZETA/6s16z0cWrGvHoikTFAzd8hDSw/Azqlr1WDkVnxP
+5IXZcE5Vhc0rdfcZDa3Hxk6yKu88IHAKqrIgjpbEV5JURA7FSMImvsD+ovZz
+6vXp3hgag2xJjqCdgTK2rxtEDqYpMjJK7Kltj/Kxev0e5ytgFRayTyzS4uPQ
+rDis2Xu9YMz0gN+QdeLYmBiicDo+EQg5v8unP3Dio9WhQH2UUYyhB6lGyr5W
+6/rJYIRJxodiVF1ns6UUve18c3pCcOx+c/rsGa+MvraPuLEKedhdVZUVAPR7
+fvHxYGf3K3YtcDUuSr1CTLahPrWz+2Sw+8UXNAw+WzmpvuEGCfk1LmhJbvor
+P5JvKDHPmHjp9WUtuSTlG+BDllL6CHmYzwY0w1j5gEWHehPJxbSAAHXrBBSk
+y/erh1Wlq2cgFQPsjUOzE0x4NxazeuQLsrbXV0wDRKteXzFnutCiOdUFlo1E
+8AGLPj/+Vvf65BT/iNZKo7TWezwlMvvmh6Nz6UnAEbYlNoaI+RBZpYVaxaqE
+Z3VdjvOQxEKn1FMsaVERx5SXYB4aw9vqtxLHGppwVYwlGqXH60Rc6cSMr8MS
+ORgxA8xE5R1SRh4q14IfTIV4ohsyoEnIvHJaoA5z6qH84DmXiw5uGU8n3kWv
+vDA2A5ctp4y4OBxGInLY02OtGqIvr+ocWEQo8tyi9HDRGFt529G93eeKcsGI
+X0VeywEI6R40Aif+z1bBg9LBAwMLBE5lifatJVKWfBdf7+Vf0onZ8X7uYB4g
+Ww0CxAmz9hmy61jA8MecntmBpZI0HlHEbnSlmBeyBP1hytK4vTVeQab060E5
+HVzn7mZdqaE9M6ih+chGdIBTrieFNPTh3GVFGikwKWWEdMfkzCVwJhVfWyWq
+TaSLaLIuQMuuwrIYUIK0lDcxNOsgBLpF52PlrvNyWd8fArWtch+kbEEhBYBU
+bX7KgTQ/AsNE2TpJDEVfinK7NWLEMbUKe3oVWtUX9JStK6fJ2UwJWJa6zSku
+DKb2wcFUlzdFeROVcMZ70QY+0p/weFSYKWfITSrJbZQ8G3zA8gicM0wCpeNp
+J1rF6pIsGNPjd4W19vyKt2pQ16VW++tHO+/fb8NwfTIj8PxUVl9EE83EeVgh
+H97nqneitLZqQCRKlo97R+tPENRac2pYRlqo9tLA3k+VkwT6fSmtigmBSwCA
+GhAmwROn+8/EPkJLVFt4+KD+0O7XoAairVuHMTARrBV78OmhqjsivzCgZbdS
+HeLY/lqGJXzMjD9r0qwt6WyDdXWUME1hXqb4zXxNNMSIsSUp5508zcsvX0bW
+amhlvMuhaPx8PubdzgNhK7ODh5luPSZoXPq9L3PrsD3WoRNoTKg86niGIiQh
+C19A3xIBJ6mhJk4NhX3A6Ee05YH3b4dkQ8kJ9RjUng8mLzi/Mo2WNBuCNTEW
+pCagxVRlfK9irLMpIqEk1qGa9xq6Nm0m5Zul62rIEI5Xl6yM4pOb1ye7Iipg
+wKrfgi70EoV/Yl9gVMo3IDoflwteAFG6lNi2KjueaSuCZYVZLd2dIeIzktrm
+rNAacuRF3eYi7JCHJQotaSyLTMXJhFqASQkiKgQ5SMssn+U3+fjNLT4vScrE
+pBw6KVx5h8tXkuXj5N0h6cb3FuVsRs6yHj1MVm69yMZUlRP0DKr1+c65hXer
+Jf31RAD0NX4PREK5b6g5an7OpIebamN3FgYA3U1n9jimq3Abi0tG/zSk+iAM
+iVPMtPBHD98PgZyvhTttQmM/2aLb1UA8LRGzpL/vq/5JOlPCn4z2EOvWhjYb
+DHEDpyjBp6Il3MZVY7NHLR5WD41808VI4pmztjOUHmV42vwknqRz3AjtGPln
+G5LfiJ4iPlI3GMD2eZuNC2pOJAZ9ZFTwHosb8l9JNydMZOvo3ADbncRXI6F8
+jAXDc2AF3xDH7Ufw6WYQhMrvzD04uWRlYBYTYIEcoAdJKvbTZDWBY3X3BpA1
+N4kDlzPMBfNSP28o8Q9dsuQrJrdbULQj1GWRnJ5SIVLOpozpUeAbFVmqqYkV
+qbRDC9uWXEfkX27hHaiD2kbKQFR06N66Mbv0p0vKZWy9o2q+0yaduFj1qnjg
+4AySE7fhRBJhlqHpQorIrTl2iWvKinJrJK1oG17AHqmhOUOL5AzVKaDZCyDV
+3hdLv6ihzMW0SLH53IlehxKBnMMsi+nESNshatLA2WIZUzkRCiCzZMar1j/v
+LvmC/ZI3rY4yAtfX53MDcJFmwyJDe0BRXC2WFwT+JmMZdCid8+/xNjDvYc4Y
+DBRlIYNW3whzBEvADlxcAcZGCJAQ/XFycgIwzMqb7Y59X2/y2bH7Lxz2D334
+jEJXHUxgIxW8ctyTE/9/jRzN76jST1iOLryv73cARzSfYsbcgRl7G2b+eM+3
+/rT1iW/K14Jp4CZF/WhQ0nMD9p5tB3SfJWUUTUfwic/xenfdOYi/ckKU0w+9
+cH0zplDqjLUFXOuZdE0aqaKtgsV0CEu3CoKKeb129dzMPLipErIabzDPVu0E
+dTipXvGpGRgTBeV8sn0rUBfYPGbb20O3AJOM3SJrTbgYcXlDB41CiyHxiQUK
+zU21Rn4WL/pZbWFpdLDWmRnNVS527OSLxG7iwtpyhJqSlDtqvyu0xbsKy1rC
+B5tvAIsICWkKgNb6DLEfXozNiiKGdHSitn7h8TPVkdC2jDCcBaMlfl8yX/R9
+wT0JoZIKsee+EDteTJRLS2640Ks3POdMN01qwS07kVoIwbxMUCwKKnZPk4rV
+RbKWao9+L248N/Fnt1yMgUSMV8Ixl3StcXGbqsidxin7WlcvhBZtedLSeOSq
+KpM+vNjdApf0/r0oeez8IucPdXyGseGAzRNFHU2DDa0Oxlf5jByBBtQ4h615
+2fGFojObwdonKy5M8kVy4jfkVn/SLvd2WldJDcxKfmMSu3Gz2QCdbdxNO7OU
+VIvJdTkbGnNMRoxqbuGE1o2bi7kFdDebOeRQksNBJaq0+2s+Iuk71aEGjV0l
+pO9q3wJ45Lh3Ae52P6rO8P6FLCFOPJN4lwZnVwDVVBPSilf2YJ9nwew0YDSk
+ctTGx30ZY9GsErsccjOJzq4+WioWetEjjFoHrxgm/PHwbY3DYD1ofnnVoDC5
+AeHBu0d9YnCQMzcvGy8Ntrgl9J4t5/WbClhTYXcf7X7xaHf3ybZYCFnhTRKf
+HewTRtKMTO950+IqToI1YEbOVj9F1QVUUxtKTnLq5coha5guLutAK4DUa0P6
+WxIS9sNpHB1mLatWXU3IO1/z729qJ4e28rSP3Iidgn4eMp4E0hag+FARzYou
+x2jdPvwet170WmaX7aR9e/LKNGCfw6tkUOMZIOKKPSKEJTxNoiMkg86wO8RE
+AwYxyKnrf1nwYSVR6muUaVld50t9RvBkNJ3fioh8MRba2cCKBRcsJnfXIrew
+Kxn2GYn1WHXjGyzIT9yhUYbyp3WCEbnNoqEWpWJ11WQhzmuHPHXYas8uTJt7
+h4XZ9yhvhax304OD1xvKB3kdG3BZzTW4yOGxRp25d+yUU9WfTUFywOdZoZ7F
+kNRFmcmY8CXqh9Y8cQDBVzGMtAulnk4jep325SM3vZ7z7m7NSSO8TWYIiHN0
+UCI4146CgZ/E3CRTfoKDvWSVk6e8nbNEAySALn3fIb5XQ9cbZ3LgWY6y4Bq3
+kBS4F2X5BpOqws0VyuZhmtdnx3Fijk4B+96U43Kmse1wRnKJSQul+IQust1D
+tFjKTXlrYYAQWfK11nGXbUqBvxVU4p+/P3iq0MqZjuBnfkDQlvZSGOHxK3Vw
+srKm/oHOQ+sE6ziGJFYwn8XSv2WFhl0MglfLM/RlVs03YBL27FUu/IHxltdt
+PhyVIwiCCCo6OtO4ABLWhmMIM7sHfrBS+R7o4Wh+0gyc4znJVRhO209zThj1
+i/ZNk1LyRI9rC6NwqipyiWuQnHqIMmMKVLqWGJbSfVd20QfE1gGioXyWDMPM
+hUMAvACqSZkBci13N2kfi/WBAbQ/g3I6/HMzXgy75kU4aRi78wj/14On9x4+
+hFeSYb54/PXXD3v3GYsKpmnEv/31fxvDBwqUxMtLbuAzY9pAcFuTDJlqk1Nx
+/TldYwC/fBkdEIzXLa4/RxIWCbO4/pL/EqEiYRlfUUIjg11UrQAja/My5PSM
+3fFDf/PF8MvhV8MnfvRvdh892tkDXGwagddO49DiSXNG2zTzu6bcKzoDHagQ
+Td+gcUtvYkd7OqWd4OPcOCBO2v0tQ6bPcIhZS86R2/Gu1B1HNjponruQz9e3
+RZiwr7hFq9KegkuSpCfwOjczgZtFws5HbZ3n4wEG3FgOiZMWL4qW8TZBG7Xt
+Gep1hkGpkZ2CEeXqRxWMqP5/iGC8k5m2WICu+PnFxasgH6PmdXeLR9QjYNgX
+rAYRz9Hou5UayihEiS3f4V3syZUYUqEJglg9dLWHdDlO5ouky/Du9caSTacI
+OEAISYCo4EhmOn41uFvKGhvk7N8lXTnfvPi7hKux0eLugZ2LF+f7bex4p3VE
+Db7+UBlmNAsjjvZdPIIdUhcbLgfrPJzOfypxi9mV95e2bQ72y6QtXdx0f3n7
+t7/+p171lC3ydLTPP3+MHz683n34t7/+r/sN/QHitz0fiVur4tYk4tYLV7yW
+Eqn/7AwW2x4hkaSRIN0Z7g4fDz9vC9JRNtkbZ1OHC904VlumnmD+l+M8sPRM
++8AME3xNPiwNtwemRr2LhvZZHjqXtE/NnwEgwXMbR2DIIgrh4CwXfS08D9oG
+t47rENr2lkFl6wiKx4C3HVzp8D6vMHLoxf+qcr2Lo6XiPOJDbOB+Yp8BDkbZ
++I1EG8Q0Tr2ft0tyYfmbwnvY4zfcJDly4wzZt0Ri0H2vjgzqEJHXtb+zIFkP
+9c/ANLWYhyerMwmXXV8+hzdX5NwqPtUupZO1fTMkgKZ0hdsaYtp3hEix3rF4
+ap8fvXhxyl1B7+NyRCeIbE3oP+9jAmv3Ceimcrwc471mSxFKMSpEIdVRTVxe
+JyntQcmgjnpUQSLNjHXmO+5D8e3JkNi5J0SPltsz1MlSUoEjr5UPvXXGNrCd
+KPYOlxvOyBfpD2T8hpAKeYI9jYVwU0rpho/EDXqp9PK9OKFCbzFoGjdfNORV
+8mPSalCF6ZvIJYohGyI+qr3DOkUOpVAOpXg8uonF8ICsMAcS+kAaYYV4U+Sd
+9FQakDdB92eEbZ6ISZhMAl9b56f72x3pzSLyHEsEogaKh60HGdIAGitq3kss
+fW/FIy6xJXNnnP34w8LS+Ozpq6Ozfbw6ijOk+LzSHYX4rSQvMmnarZ1tEGDc
+rg2rWJPkGknvzJs6ynGgqFALiJhQVQ28ONs/OX91enZBXkVUqJ6fnZ4c/yGC
+TJ2virC81gJSrzaLgYWuGE1wjUUI7pYoJlcu9tugvi6lZtIWMdhyRvfYt1Pt
+tPRlO/vrjJLc/55XaIutiFmhRxu1CpFSgUV9WgdxRSY9XW+HZj019ZHCwsRt
+f3/My0lqHdj2SfqxHI3yyyY9PpuE072Ojw9GvTqFX7SDpCAxldxs6PUeXoE+
+VfaMmnih2yW+2To3vzsHenEFxmAntuRGYUofkZnLFEV2bpQhxfebBxwmlCoK
+Q0RQaBetpUjxGLfSfNdIclmY0FTXolqLsR9jMTG+/87VpEMRbR3rXXOJ1scU
+ciZLvSuYyJqlBhNRR/Q16jxQ5Qfy+cbpiaDECL4eON8gxTnrECQQaveSJtux
+RNGMMu4HXuLdHscNHd+GD4fE7GJ5mwSU2LkWtoStb9q44640rU0nLeK7YjDD
+MKC3b9QaNW+Bc1BotrgZgYzEF9jI1BtkZDw1eSx48o0itTW1Cd3g4mA3cL+A
++ntQm0m2mNKY6DKZBNEbkp7uRDpJ0FtSyHicTYi439u/aEtw6DuS4jCJuw1d
+CttdWXX0uvfbhY2L7hS5S614RtTfvuWXuiLCLh295YoX+zK53hetxi0cCMbh
+QqYvn3y98/69KRd6kDTTKkknW0ulSa+KTVKaBCQZERUIbZY9CRL6BhO7mBK/
+cyuuHeQ3brlhvDsdJ06cofSMWxNmxOWkSTt60dV6c2ej+NqIBEq28nc5opnm
+bxDjIjyKjGNia5zYX7mBUolf+ekr6aDh6UGrMCS5r+IWkFxwFZKgFMPqVpT7
+Py/uo5127k9y4+VdbbE6fna6/ukgj+SDXfj3GP59Dv++gH9fwr+v4N8T+Pf1
+pud4kAfSYOgX/zP20d4dHXP4jtfBwenh0aZH3n00aHbvgEaAeXF08u3F818d
+ms9b0ASzJZot+j0YFL8GNE9iaNrWSgc0XT8PPxo0O0A4DwNGBk9PD3+4Y/Jf
+DxrqusRVWHT2uV2P9GyFoxvRMNfQ79py3GAvzod250s7wtsNtpRr+EubWRZs
+h4SvYJxePD3UVguJ1Tz0czGJ/h2z+fYFmFrIjXXIgsxWszKb2C30bqwavoiM
+mscmE29L222dWRi/JHd8Hpqpp6O39pOtcxwmvSnjJ1eVOjKWt27TuuVVXvMT
+WueQ8uu4AtNhaxiKnvjLZehTkZT0FnyBknQt54mxJaOAFetHqEUj1+4bz4/2
+zy6eHu1fcOJsFgqI4ytT0rzYpHQto2GK5XzEfRujG2yiSUm7idIl8V5DTsml
+v7lXiUi4JC+KhLT3QAQJmRRcEyZ8BQujQmYgbUlqhMnO9b2JyDXPN51Ifo9N
+CxZLeYpytrBdcOO/QyGpvCvdviOyagXxt5p1Ej78Hh3iYYSOMmXeS8spck9i
+LSFk0pVTGkMdJ52kcFPukUIid6NiW+3XLy6OB5h3cnRGHDJdy6nvquarkaSd
+xW150tQHNMHDrVnVm1FD4yB6Phw13A6lu0TEN9xqtW/j1M1cMEUjtNVwxFxs
+NsSnmBgAv/b7rMqRmAfMK0LTEbwjO7pPbuB74mKv3zkaRurxIfQhq7rwNHTQ
+4ZG7p7KPNfotDyC+DQYgW/x54pRKdmSU3KJmqKrDB2NoV2BdOwD1IyauMEyo
+1dnS3Mm+j3SHL0eruLrbmJ09cjx1jGPM7uCrPYCasg1SNL2MSayNjL8Lc3R9
+VELB0gGwHzwekVs1fXStMuUW3NpNuLWE3DYt3nqoIpwBPhNL977vJbg+JM0A
+nTIJ75fjuob8UMeLkQ+6hlgryJNDx3fQaCv2wzy7hGNgtakvvHekARrEiGQa
+Y6AOb/3toZnyHL2O7A/tseFCcmCyrPhGH59yU8SZzEnOrFxD15EH3W+3Vl+b
+krqHE7hxvoTx3eUnsiTy/Q/bAOZ1ajDtDMNNC96FtjElH284RHbDmehKRHES
+eOS8GbkxxnHUJx1HWYEScZiu/PK0vwQlpURjsjOIeSm95lNOiVX7G3rb8b2h
+bQVbo6DfVBJ10fe0nsDebwV315vf906Ojg6PDrG5xW5855Ukl9gMDXTFVUfI
+rSMoyB3g47xpiewXq64c+31/fQYVypBziLqGp1dl+3TycQgkbnDP1XKrEgzi
+60XbWTHky5fikw1lf/AED0GXkM5m0iDtqitCb6WAKnL0U2+ZAi+/ki5SrMj1
+vjs5/Z4afT3W6Tv9wE1wj6Rgbb0+O+5zCofopCGs47l1gq1tCkO6AgPo7QAd
+7wy1PPdFXxtZPbpNUEvht7wk/0YiaaSAkGfdUaP6pb/PHF/Ui0S1RUF+V2CH
+6CiO7YCqT06k2UoDUsT8kS1H8iR+BYcI2YLkCCMwAPufD21a0iN67iUZM4Cm
+o7Oz07MkIIajC/pgQVsUwKF+/YpMukKUYFKS13HIDx8umPR8HhkkjpDwSB8M
+keh4SOOQONsqGirq8k7X5yFhN1GkfcUnWWNV6QLgi5HDIltBIJ27At7PJlIz
+dlvGfCB0dHUHYg9nT6ix50ll/4V0uwohx+g8I7cOeTEx692U+mASOaW9NZQr
+S5n7lrscRgFtrdC6oWt0ZtnKcTiUHNU03ZzzHmzNmgN+IUkBsr26u2do8H9z
+dvTs9fnRoaHmxat1Eomvk5Azz5o5FR32/f0IuEVGLwVfH0Xc/97GVvInxMg5
+ZoCE6IbsUoxaj9/al3xjO+r4GfPO2lPptd/VLZ23b/8WR5E+8xRdVx8XNhn/
+lp97te5+lwy0/z+enW3h+RjM3RBkxvaHDzTY/PObfzqI7vXzm3e/DrJ//YH+
+7fXR2Q+2VXoxGCEeMdHzt/cc6CPiiCECeGJQUL7/9oOW9mtDBFrGb8ND/2CI
+7v75Rw8k/Dk6hjGvvvdAHxFHqrJsBuleA/3L3RAN/uvtmteE/j9lfyQc/Zem
+o/sMJFd1aFJQHjttfamyiUxutP8wQRnTo5JrBbCRyCTq3xK5nSKXNne5YYeo
+PcJak/UeB6ApvuCq6HD3Njf2kuQfBC48G93MGGvebOfLrQLBanPcDza07krS
+YSioIA3QkoZzarqGJF7T2Q4iusRCU2QqF1IcqSzgM5tYx4lp7K1pSTTobKeF
+W8ezk6eVcy+HHSNHmeetoTd16moNDQPQBRl+L2Wa/Zm/2o2vxFAXcEjmpChL
+fOG2XDdC98P5sF5cmK1NiiM31qoVPLiLaqjShdrRH+Iu7+M9DfbpKiGkNBs5
+Mu/TtjR9vjoNo3V0GpLsltoE1xJ34r52K+2xS9c0kylMxhZRAzsC074+W+tN
+fQC9u9jPp6lyd50Rjv0d80S3W74URdsGsSIELz4e2oPQ+6f12nr/n+32tS5k
+3VKMjcpXNYE6TmcKjhHpBh1wgoZlyJ9FCxK7JJEfzQeY9GpGsbi7/e/cajGa
+VM1q31pd4ofCoqRvkO3qG2QToPbIoZL4tXs0Ui/1XRGupBjlzpACUjJIHm21
+Jm38cMVgM6NvFTcM4YMda3EeT/DRRQBNic2DNILU7nftbxWJWiuFe8D5WhI4
+toZ7EfESk0t803a3dHw39QCV7OusSaAI5ROBEPnGx+gk18YXjMZ9p+mQa1c0
+vrzCN8HsOPMmmZcFAG1mgjtueTqJ8+E7mTgVOkUlGLfcPhT80G2+fXGV3rue
+ViGk18uEvQk9PYntcfLxub+hwa7fE7CUatX2RYsCAt6BuT5/f31zvzv/LmDA
+33yqc3fOgjkOTj3n22FOoZ90wvUVR6IytGS45ULvzTcwRG2WNcnkHyR7sE8v
+cIUiCYeF+3G0jgCH6RZTPtiVkEcvLj7tJcMw3fbSEs+1K2xaFaBYDijEOBwO
+73yUCwc/4AXYj/uPKw+DJvkyv5S0Fjr453TxtpbTALXFiULMM+fpG5lc1q08
+mhrZpVdNxxe4U49iLnXwjmgRw8Anr7JrCQXyBeDrd6RIdC9pDVXqe/4q8Y4U
+9nDtEfX44CwhrhQTpuc7+8KA3Dt4WytpOINIS9BqTGMiqeoWohuD6pIAnlRI
+k17hG8JFFG7Mne+l7LM1hpSgS6MdPou9uApVHP8n5y+/fXnxDfWX50sxinJQ
+LnhYbVlstGNlwRlaa1XcaQU3D3ZLw5ToIpILPVQ32YY12NvWoGfPf8+SEx3j
+oaATmIfysvgmaOHpHHognPve6wiMyKP1u8GGgXGxAF0WSiwksV1QxZKW2trQ
+HmjiQOk7fMsbIb3Xiei4EP6iZHwmtlt6qRdpI9LJjVPC0vvzWKwjmmJG+TN+
+9374s3K+91FfA3qtLfNE7e7c0Nq17CNQUe/gevTiPblY+9moBKIlqxJGfRdE
+6nNsTdTFL29/1MAuMfOTC5t76X1w3B0+MKWe6Dfha1qIia+SQ90nugIj0v34
+7rawsKTpXl4bvQyFuutwi8oQTLt1iKhde97UbjYdgkibcnPmvNXBKX0+dGpV
+ijZC0dP4NgFvzKQt4whnCSsC9Vn+pmPAx0YkksqFVoXnfixMnkrtayK1pL3g
+Wt1sFi/kJhMDSTdUy2gzk4qzRHixDIlvfWmCERFrRNv95PogzFCpSdPzHQ0q
+lCG1V7BToWrWRGosUEOWSrQgBaqOQarl0tJEWdsiSfuG70GgrJPCdT65rU3s
+Nyy4c3QpNsXmohNvlcVXP5rIlgT56XHUvrBnKws1Ee0iktw1U6khgf8COANQ
+WUs2CDEdGY6Htj6Qi2DnchFo12a1rtrhfFM4BORIMCrkPb4lNh1vqCceu5l4
+ht3XBkXXBfXXTltWxKDzgZN7Q0TB0S3ZdKlQsjRcxal9emTPjl6e/v7oEH59
+dnp2ZF+9fvri+EDyoD+xZxnnDjuRYtKQPdrJlwVAVeRjdEnkEVHP5XP7UvJZ
+UcQmyatJ71G9FggLBamuB2jhUros55QvhSIsdJTHVB48uOzzKDB5M5BguPy0
+5WWMblgY2nOWmL5BZxZdaWXmTsusEGvpfauta2OJs/gsVuolTzc4UanQKPS4
+Dr6QKInrwhcD3WAW5uUlFfZG+BP1liq5OIMmsrwI6nlSEtZDc+0nzMGftbMd
+0VlS02W1SgJPl+lk2HK/dgWPi/n5wIwKvKWSOvxHOfiZ9PA3AjLlUiIelgvK
+N9AkAtjCzN87glm1qiWFxD+9RqLr1hS86Il5crhft+V7moOpSUb/FrP8vlkf
+GosJoiNpF7ljMq7LaUN5IHjPG90qgt/UfZO4w5l9a2IblrrhqzMgJDlxU1AI
++ZyAWrUdEXO9xL6hDGUNpx9znpcAgMdPhp0dKrpjBw/+23XQhq2KwCyf12tZ
++QEA4FYxmkkH9AnqEbbgkSu9goHvprE/LieXvg2zxwxzFxNfNjDEhCJkYH6r
+fImeZNXKtRz4/sxNtVI9quSrJNV0vKzQBj+Q5B52r1J6dCJsyfPGbN1XP3gL
+gA5neguPlk28lUbXmlATyiICKobEztnPgRWHM2yRGzQwkpC453qJD+9pCiB2
+KZou8X4UIJQMtmJMsoHu+fbSKLr7LHyoN1YuMT/dwQZMTH3DfYa5SpqaqdDE
+JLJ4OVTtWpUjupUBCJ3+vl7OCuqu7UhY5zM+Nbdep5Lz7esovTg5T+8Bwyu4
+pTMESxdYJcjAinriaP6SZ5ddV5/rpoeZOlQA6VKlNy17pqi8bVE2LFlN1jQo
+Wa8B4Xgnq0clhTwQhCT7qt7At73dKONHndPzul5K6uGs5C5/XnmtS7xUijz/
+F4CVvklTvfQ+d44qwZEqsJg4eWaAd2gNAHd945ox8IgjoM9yxYN752rtoqm4
+lLMEjrUivXk+10vvnrEyrBvOd2GlPbdJPKTeFrAVgfvAuTTqtMDq04gnEJP0
+m6jylJrRhSu89XYJuvctdn9fRTcCqV84CqSlc5n4xh5u14vIY1XWD6M3XGeT
+axD1lAI5pZQ79vFwRlxRLjnlrba+wkjWUS4bkndwoGYTuswrb/hAazK0aWf8
+hUvSY9GSUjZTvxghel0HLVVjCT7LsH0w8VT7ROwRFXXR7WqkoOh1iXpkEIt8
+32be+PBO+w3kRBO0H7JqhbEbOnPsDQdCnPTX9qFs4n5GXIKsneJHTl0xdJHB
+0nfFb7S3k8ceSkLpwy4XMgWDMGs0ZBlHg1D5CcFcLfPOqb49L6aV1HQBbaIj
+Fqg87pmjeoem02LmdaFqHbDeKV1PhYKtRJ+fvwnUyFVLLA4zAVLAo9OX6kj9
+uFM+wmZUMndGqVA3ctVVtpCuA36CtVtSEJZ25EJH4fRM7g1WN+VC8lUJAowp
+RhfTmNDjip5ExUVk+QK7cG3bcgwnqY4MCG0KCljCazW8qhBZIWvd4oDZL+fO
+I1T4fTf4hiZAX1ReLMUd4hdA4h8sEpL3x/sn+y1ZjxfxfXaCwWDB2NmzA3s0
+yYHJf/bZnr9bUho39S1sBYYkK7eY4aV+tNgKzwgx7N5Woixt91Twy5VopMTh
+06yS+vtYL1YLsHAIvLzWLjnMm6KbzXpnri6XFeDsjJ2yW2dn2/bih1dHdQ9e
+usQCzZXxzjfbk5uuT9B0OWfJvQVCaNu+8vVl4UVJkMhqEypQCK49sfYM3bsO
+f2LxrnnpMmTP8Gd0h7s3BZncY0eqtOVm13iDHWCVk6zw7iPBCwzXQiEh6gR4
+xK3hVF+e1V322tXooG/JDYm+gd6msXtoDypHktJlWBcggO4GoBEfaQeNAypw
+3MKQbrQdLTP39avTk9TI/aO29Ly5uRnmoEYOy+ryIU9LnSMeTop6ECoCW38O
+314189kn6YeDnZ0/bU3Lctt3XdBE4gebs5UedP6aPGEoPYjoAP6f6Ko7g+ic
+LuKmX/3eruUhfUyYcEvw/zdSCcFUTICTwa9brfLo7Y8NE+dGfWL3iXTP9Iih
+xIvI9ZZSFF/hTVR1Rw8O6b3B8llJvrBPBiPUN/xQ5Bglb6S0eu1kOGM0mTlW
+idyDm1nh8fGMQs+N2XhuAvx1r89eF3H43rGGofaRNHKtpr9J/D5TBRBRH+Bu
+wVRq99+N3HMYHStU/cVJ/Hiws/sViDEKOVWqidAljmDzl8vLK3OeFDqeaUIU
+1nsBan7++bdPD17tfvn+/XpRwm2kdDt1RfT0Luqd8c77vO6VqNdxAN/9CvA9
+imaETRvlkwlg/z7wrR/GXwO+nWhGbnlwv59/FHy7CXzShOGfCD4+Izzj68JL
+xX8a+HZ2nwx2v/jCshDIr5GHva675dM/Hj6SB/AbuefpKlpW058Du8K7MLeY
+5bCHHT1z5JKNzN5tbH2WwkmNmiqqpvTuD5dVs5xSqvghEGkcppi5stAwRWjk
+MYiNisGjR8b8xjfylVab9PrQ/D/yHmh2DNEAAA==
 
 -->
 
