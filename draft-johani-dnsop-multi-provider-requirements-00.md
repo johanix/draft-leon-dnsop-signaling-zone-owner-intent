@@ -107,7 +107,7 @@ A multi-provider architecture must fulfill the following requirements
 to be able to fully support all multi-provider scenarios:
 
 1. Each party (each DNS provider) must be able to identify and
-   authenticate all other DNS providers via the mechanism without
+   authenticate all other DNS providers via a secure mechanism without
    manual handholding by the zone owner.
 
 2. All publishing parties must be able to contribute to the NS RRset in
