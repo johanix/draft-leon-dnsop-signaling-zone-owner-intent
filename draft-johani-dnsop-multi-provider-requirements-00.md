@@ -54,7 +54,11 @@ providers or in synchronization between them.
 I.e. once the multi-provider setup is in operation (and as long as the
 zone owner does not explicitly change the instructions) the DNS
 operators should be able to manage all changes to the zone without
-involving the zone owner).
+involving the zone owner.
+
+The zone owner should only have to be involved when explicitly changing
+the instructions to the DNS providers, including the operation of adding
+or removing a DNS provider from the zone.
 
 # Multi-provider Scenarios
 
@@ -70,23 +74,32 @@ Some examples of multi-provider scenarios:
    zone. All providers serve the signed zone.
 
 4. A zone owner has multiple DNS providers. Two providers sign the
-   zone. Each provider serves one of the signed zones.
+   zone. Each publishing party serves one of the signed zones.
 
 # Multi-provider Complexity
+
+All multi-provider setups inevitably add complexity (having multiple
+providers is more complex than having only one). The goal is to localize
+the complexity by making the zone owner intent and the technical
+requirements as explicit as possible.
+
+The more explicit the intent and requirements are (i.e. fewer assumptions)
+the easier it will be to fully automate implementations.
 
 ## Multi-provider Synchronization
 
 One of the complexities of the multi-provider scenarios is the need
-for synchronization of data. For example, if a publishing party
-changes the NS RRset, this must be communicated to all other DNS
-providers, preferably using a secure and authenticated mechanism.
+for synchronization of data across providers. For example, if a
+publishing party changes the NS RRset, this must be communicated to
+all other DNS providers, preferably using a secure and authenticated
+mechanism.
 
 ## Multi-signer Key Rollovers
 
-A complexity of the multi-signer scenario is the need for
-synchronization between the signing parties during each step of the
-key rollover process.  For example, a signing party MUST NOT use a new
-ZSK for signing until all signing parties have published the new ZSK.
+The multi-signer scenario has an additional need for synchronization
+between the signing parties during each step of the key rollover process.
+For example, a signing party MUST NOT use a new ZSK for signing until all
+signing parties have published the new ZSK.
 
 # Mandatory Requirements
 
@@ -95,9 +108,9 @@ to be able to fully support all multi-provider scenarios:
 
 1. Each party (each DNS provider) must be able to identify and
    authenticate all other DNS providers via the mechanism without
-   manual handholdding by the zone owner.
+   manual handholding by the zone owner.
 
-2. All publishing parties must be able contribute to the NS RRset in
+2. All publishing parties must be able to contribute to the NS RRset in
    the zone.
 
 3. All publishing parties must be able to trigger the publication of a
@@ -115,7 +128,7 @@ to be able to fully support all multi-provider scenarios:
 7. All DNS providers must be able to initiate synchronization of
    changed data by notifying the other providers.
 
-8. All DNS provider must be able to fetch data from another DNS
+8. All DNS providers must be able to fetch data from another DNS
    provider using a secure mechanism.
 
 9. DNS service for unsigned zones must be supported.
@@ -123,12 +136,16 @@ to be able to fully support all multi-provider scenarios:
 10. Responsibility for updates to the delegation information in the
     parent zone must be explicit.
 
+11. The zone owner must be able to add and remove DNS providers from
+    the multi-provider setup, and the providers' infrastructure must
+    handle such changes automatically without manual intervention.
+
 # Desirable Features (i.e. not Requirements)
 
 1. A signing DNS provider should be able to use a "standard" DNSSEC
-   signer application. I.e.  it should be possible to use signers that
+   signer application. I.e. it should be possible to use signers that
    are not specifically aware of the multi provider setup. "Standard
-   DNSSEC signer" is defined as a bump-on-the-wire DNSSEC signer plus
+   DNSSEC signer" is defined as a bump-on-the-wire DNSSEC signer with
    support for multi-signer key rollovers.
 
 # Security Considerations
@@ -141,6 +158,6 @@ verifiable or received through secure and authenticated communication.
 
 The requirements above are designed to fulfill this need.
 
-# IANA Considerations.
+# IANA Considerations
 
 None.
