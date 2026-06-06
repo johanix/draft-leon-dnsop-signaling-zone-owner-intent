@@ -824,6 +824,53 @@ Example:
 zone.example. IN HSYNCPARAM signers="fox,hare" pubkey pubcds
 
 
+# Linking HSYNC3 and HSYNCPARAM {#linking-hsync3-and-hsyncparam}
+
+HSYNC3 and HSYNCPARAM are designed to work together: HSYNC3 names
+the Providers (one record each), and HSYNCPARAM expresses
+zone-wide policy that references those Providers by Label.
+Resolving a policy decision such as "is provider X a signer?"
+therefore requires consulting both records.
+
+The signaling appears in the zone the Agent receives via zone
+transfer. An Agent does not perform DNS lookups to resolve these
+links; it analyzes the HSYNC3 RRset and the HSYNCPARAM record
+already present in the zone. This is local zone analysis, not
+recursive resolution.
+
+The procedure is straightforward. To determine whether the
+Provider identified by HSYNC3 Label "fox" is a signer for the
+zone, an Agent:
+
+1. Examines the HSYNCPARAM record at the zone apex.
+
+2. Reads the value of the `signers` key (a list of Labels).
+
+3. Checks whether "fox" appears in that list.
+
+The same pattern applies to all HSYNCPARAM list keys (`servers`,
+`signers`, `auditors`): the value is a list of Labels, each
+referring to an HSYNC3 record in the same zone. Conversely, an
+HSYNC3 Label that does not appear in any HSYNCPARAM list key is
+simply not assigned that role.
+
+A Label referenced by an HSYNCPARAM list key MUST match the Label
+field of an HSYNC3 record in the same zone. An HSYNCPARAM list
+value that does not match any HSYNC3 Label SHOULD be logged by the
+Agent and treated as if absent.
+
+Example:
+
+zone.example.    IN HSYNC3      ON  fox   agent.fox.example.    .
+zone.example.    IN HSYNC3      ON  hare  agent.hare.example.   fox
+zone.example.    IN HSYNCPARAM  servers="fox,hare" signers="fox" nsmgmt="agent"
+
+In this example, both "fox" and "hare" serve the zone (both are in
+`servers`), but only "fox" signs the zone (only "fox" is in
+`signers`). NS management is delegated to the Agents
+(`nsmgmt="agent"`).
+
+
 # Communication Between Agents
 
 For the communication between Agents there are two choices that need to
