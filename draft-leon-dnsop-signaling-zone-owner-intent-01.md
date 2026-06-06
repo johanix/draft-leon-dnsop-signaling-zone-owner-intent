@@ -475,6 +475,36 @@ I.e. in the setup above there are two DNS Providers, both of which are
 "complete" in the sense that they provide all three of the above
 services.
 
+## The Auditor
+
+In addition to the DNS Provider role, this document defines an
+Auditor role. An Auditor is an entity authorized by the zone owner
+to observe the multi-provider synchronization for a zone without
+contributing to it. An Auditor does not serve the zone and does
+not sign the zone; its purpose is to detect inconsistencies (for
+example, divergence between Providers' DNSKEY contributions, or
+NS RRset drift) and to flag them to the zone owner.
+
+An Auditor participates in the Agent-to-Agent communication for
+the zone in the same way that a serving or signing Provider does:
+it is reachable via an HSYNC3 record (with Identity pointing at
+its Agent), runs an Agent that exchanges synchronization state
+with the Agents of the serving/signing Providers, and is
+designated by the zone owner via the {{auditors}} key of the
+HSYNCPARAM record.
+
+The Auditor's interpretation of inconsistencies, and the channel
+through which it reports findings to the zone owner, are out of
+scope for this document. Implementations are free to express these
+as alerts, dashboards, periodic reports, or via any other
+mechanism that suits the deployment.
+
+An Auditor's Agent SHOULD only receive zone data and observe
+synchronization state; it MUST NOT contribute zone data (DNSKEY,
+CDS, CSYNC, NS records, etc.) via the Agent-to-Agent SYNC
+operation. Contributions from an Auditor MUST be silently dropped
+by other Agents.
+
 # Identifying the Designated DNS Providers
 
 It is the responsibility of the zone owner to choose a set of "DNS
@@ -702,10 +732,8 @@ Key number: 2
 
 Type: list of Labels.
 
-The `auditors` key signals which Providers (or Provider-like
-entities) act as Auditors for the zone. An Auditor observes the
-synchronization between other Providers and may flag
-inconsistencies.
+The `auditors` key signals which entities act as Auditors for the
+zone. See {{the-auditor}} for the Auditor role definition.
 
 Example:
 
