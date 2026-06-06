@@ -1557,24 +1557,6 @@ from where it left off.
 **Note to the RFC Editor**: In this section, please replace
 occurrences of "(This document)" with a proper reference.
 
-## HSYNC RR Type
-
-IANA is requested to update the "Resource Record (RR) TYPEs" registry
-under the "Domain Name System (DNS) Parameters" registry group as
-follows:
-
-Type
-: HSYNC
-
-Value
-: TBD
-
-Meaning
-: Zone owner designation of DNS providers enabling mutual discovery
-
-Reference
-: (This document)
-
 ## HSYNC3 RR Type
 
 IANA is requested to add the following entry to the "Resource Record
