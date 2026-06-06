@@ -543,6 +543,34 @@ In this example the zone has two designated Providers, "fox" and
 The unqualified token (Label) used in the Upstream field MUST
 match the Label of an HSYNC3 record in the same zone.
 
+## Semantics of the HSYNC3 State Field
+
+The State field signals to all Agents what the status of each DNS
+Provider is from the point-of-view of the zone owner. The two
+defined values are "ON" and "OFF":
+
+* "ON" means that the DNS Provider is currently a designated DNS
+  Provider for the zone (or in the process of being onboarded).
+
+* "OFF" means that the DNS Provider was previously a designated DNS
+  Provider for the zone and is in the process of being offboarded.
+
+The "OFF" state matters because the offboarding process typically
+involves the remaining DNS Providers, and they need to know which
+DNS Provider is being offboarded so that the correct data may be
+removed in the correct order (either during the multi-signer
+"remove signer" process of {{!RFC8901}} or a simpler "remove auth
+nameserver" process).
+
+Once the offboarding process is complete, the HSYNC3 record for the
+offboarded DNS Provider may be removed from the zone at the zone
+owner's discretion.
+
+State=OFF is also useful during initial setup of a new DNS
+Provider. As long as State=OFF, no data from the Provider must be
+used by other Providers. However, it is possible to verify that
+communication and the discovery records all work as intended.
+
 # The HSYNCPARAM Record
 
 The HSYNCPARAM record is published at the apex of the zone. There
@@ -671,10 +699,13 @@ NS RRset for the zone. Two values are defined:
 If `nsmgmt` is absent, the default is "owner".
 
 In-bailiwick address records (A/AAAA records for nameservers whose
-name lies within the zone) are not covered by `nsmgmt`. See
-{{suffix}} for the related signaling that lets Providers add their
-own nameserver names and addresses within a designated subname of
-the zone.
+name lies within the zone) are deliberately not covered by
+`nsmgmt`. The reasons are to limit the possibility of DNS
+Providers polluting the zone's namespace, and to keep the
+specification simpler — the concept of delegated NS management is
+already new. See {{suffix}} for the separate signaling that lets
+Providers add their own nameserver names and addresses, scoped
+under a label designated by the zone owner.
 
 Example:
 
