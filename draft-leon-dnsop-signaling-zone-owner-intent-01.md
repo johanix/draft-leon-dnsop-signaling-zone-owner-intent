@@ -1747,6 +1747,17 @@ Specification Required review {{?BCP26}}.
 
 * draft-leon-dnsop-signaling-zone-owner-intent-01
 
+> Replaced the single-record HSYNC RR with two records: HSYNC3
+> (per-provider enrollment) and HSYNCPARAM (zone-wide policy as
+> SVCB-shaped key-value pairs). Defined eight HSYNCPARAM keys:
+> servers, signers, auditors, nsmgmt, parentsync, suffix, pubkey,
+> pubcds. Added an IANA registry for HSYNCPARAM Keys. Removed the
+> obsolete Sign field; signing intent is now expressed by
+> inclusion in the HSYNCPARAM signers key. Added a "Linking
+> HSYNC3 and HSYNCPARAM" section explaining the Label
+> indirection. Rewrote scenarios, examples, and migration
+> chapter accordingly.
+
 > Agent-to-agent data exchange now uses the CHUNK transport mechanism
 > defined in {{I-D.draft-berra-dnsop-chunk-transport}} instead of the
 > per-provider subdomain publication scheme ({zone}.{identity}).
