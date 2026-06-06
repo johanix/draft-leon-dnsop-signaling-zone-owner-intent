@@ -456,6 +456,137 @@ unsigned, zone that the zone owner maintains so that this RRset is
 visible to the downstream DNS Providers and their Agents.
 
 
+TO BE REMOVED BEFORE PUBLICATION:
+
+# Rationale: Two Records, Not One
+
+The signaling described in this document is split across two RR
+types: HSYNC3 carries the per-provider enrollment (one record per
+provider), and HSYNCPARAM carries zone-wide policy (one record per
+zone, structured as a list of key-value pairs). An earlier design
+used a single HSYNC record. The two-record model replaces it for
+three reasons:
+
+* The single HSYNC record was intended to be a static-and-fixed
+  RDATA, but the set of things zone owners need to signal kept
+  growing. Each addition meant another fixed field. A
+  fixed-schema record does not extend gracefully.
+
+* As fields multiplied, each per-provider record had to carry a
+  value for every field, even for fields that did not apply to
+  that provider. Most records ended up saying "no" or "0" or
+  "off" for most fields.
+
+* The single-record model permitted inconsistent configurations
+  on the wire. For example, two providers could each publish an
+  HSYNC record claiming a different value for the same zone-wide
+  policy field (one saying "the agents handle parent
+  synchronization", the other saying "the owner does"). Both
+  cannot be right, but the wire format allowed both.
+
+The two-record model prevents the third problem by construction:
+zone-wide policy lives in HSYNCPARAM (a single record per zone),
+and each provider appears in HSYNCPARAM key values only for the
+keys where that provider participates. It avoids the second
+problem by listing providers only where relevant rather than
+flagging every provider on every field. And it avoids the first
+problem by structuring HSYNCPARAM as a registry of keys (analogous
+to the SvcParamKey registry for SVCB), so new signaling concerns
+can be added by registering a new key rather than by changing the
+record's RDATA.
+
+# The HSYNC3 RRset
+
+The HSYNC3 RRset is published at the apex of the zone and consists
+of one HSYNC3 record per designated DNS Provider. Each record
+identifies one Provider and locates that Provider's Agent. HSYNC3
+carries no role information; roles (signer, server, auditor,
+etc.) are expressed in the HSYNCPARAM record described in the next
+section.
+
+An HSYNC3 record has four fields:
+
+zone.example.    IN HSYNC3  State  Label  Identity  Upstream
+
+State:
+    Unsigned 8-bit. Defined values are 1=ON and 2=OFF. The value 0
+    is an error. Values 3-127 are presently undefined. Values
+    128-255 are reserved for private use. The presentation format
+    MUST use the tokens "ON" and "OFF". State semantics are
+    described in the section "Semantics of the HSYNC3 State Field"
+    below.
+
+Label:
+    An unqualified token (NOT a fully qualified domain name) that
+    serves as a short handle for this Provider within HSYNCPARAM
+    key values. Two HSYNC3 records in the same zone MUST NOT use
+    the same Label.
+
+Identity:
+    Domain name. Used to uniquely identify the Agent for the DNS
+    Provider that this record represents. This is the name under
+    which the Agent's URI, SVCB, JWK/KEY discovery records are
+    published.
+
+Upstream:
+    Either an unqualified Label referring to another HSYNC3 record
+    in the same zone, or "." if this Provider has no upstream
+    Provider (or the upstream is to be configured manually).
+
+Example:
+
+zone.example.   IN HSYNC3  ON  fox  agent.fox.example.    .
+zone.example.   IN HSYNC3  ON  hare agent.hare.example.   fox
+
+In this example the zone has two designated Providers, "fox" and
+"hare". "fox" has no upstream; "hare" has "fox" as its upstream.
+The unqualified token (Label) used in the Upstream field MUST
+match the Label of an HSYNC3 record in the same zone.
+
+# The HSYNCPARAM Record
+
+The HSYNCPARAM record is published at the apex of the zone. There
+is exactly one HSYNCPARAM record per zone. It carries zone-wide
+policy as a list of key-value pairs, structurally similar to the
+SVCB record's SvcParamKey list.
+
+The RDATA is a sequence of key-value pairs. Each key has a 16-bit
+key number registered in the "HSYNCPARAM Keys" registry (see
+{{hsyncparam-keys-registry}}). Three key types are defined:
+
+* Flag keys carry no value. The presence of the key signals "true".
+* Value keys carry a single value (typically a token).
+* List keys carry a comma-separated list of values (typically
+  Labels referring to HSYNC3 records in the same zone).
+
+Presentation format places the keys in any order, separated by
+whitespace. Flag keys are written as the key name alone. Value
+keys are written as `key="value"`. List keys are written as
+`key="v1,v2,v3"`.
+
+Example:
+
+zone.example.   IN HSYNCPARAM  nsmgmt="agent" signers="fox,hare" pubkey
+
+The specific keys defined by this document are listed in
+{{hsyncparam-keys-registry}}.
+
+## Unknown Keys and Private Use
+
+A receiver that encounters an HSYNCPARAM key number it does not
+recognize MUST preserve the key on read-back but MUST NOT take any
+action based on it. In presentation format, unknown numeric keys
+MUST be written as `keyN` (where N is the decimal key number) so
+that they can be parsed unambiguously by tools that have been
+updated with the key definition.
+
+The key number range 0-32767 is allocated for IANA-registered keys.
+The range 32768-65534 is reserved for Private Use; receivers within
+a single administrative domain may assign meaning to keys in that
+range without registration. Key number 65535 is reserved and MUST
+NOT be assigned.
+
+
 # The HSYNC RRset
 
 The HSYNC RR has the zone name that publishes the HSYNC RRset as the
@@ -1320,6 +1451,62 @@ Meaning
 
 Reference
 : (This document)
+
+## HSYNC3 RR Type
+
+IANA is requested to add the following entry to the "Resource Record
+(RR) TYPEs" registry under the "Domain Name System (DNS) Parameters"
+registry group:
+
+Type
+: HSYNC3
+
+Value
+: TBD
+
+Meaning
+: Per-provider enrollment for zone-owner-designated DNS providers
+
+Reference
+: (This document)
+
+## HSYNCPARAM RR Type
+
+IANA is requested to add the following entry to the "Resource Record
+(RR) TYPEs" registry under the "Domain Name System (DNS) Parameters"
+registry group:
+
+Type
+: HSYNCPARAM
+
+Value
+: TBD
+
+Meaning
+: Zone-wide multi-provider policy expressed as key-value pairs
+
+Reference
+: (This document)
+
+## A New Registry for HSYNCPARAM Keys {#hsyncparam-keys-registry}
+
+The HSYNCPARAM record carries policy as a list of key-value pairs.
+IANA is requested to create and maintain a new registry entitled
+"HSYNCPARAM Keys", used by the HSYNCPARAM RR type. The keys defined
+by this document are listed below; future assignments in the 8-32767
+range are to be made through Specification Required review
+{{?BCP26}}.
+
+| KEY     | Mnemonic   | Description                          | Reference         |
+|---------|------------|--------------------------------------|-------------------|
+| 0-7     | (TBD)      | Defined in a subsequent revision     | (This document)   |
+| 8-32767 | Unassigned |                                      | (This document)   |
+| 32768-65534 | Private Use |                                  | (This document)   |
+| 65535   | Reserved   | MUST NOT be assigned                 | (This document)   |
+
+The specific keys 0-7 defined by this document will be specified in
+a subsequent revision. The registry skeleton (Private Use range and
+Reserved entry) is established by this document.
 
 ## New Provider-Synchronization EDNS Option
 
