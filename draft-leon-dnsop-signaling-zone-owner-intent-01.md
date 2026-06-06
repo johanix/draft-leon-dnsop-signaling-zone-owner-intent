@@ -161,11 +161,34 @@ when, and only when, they appear in all capitals, as shown here.
 
 # Terminology
 
-Provider:
-   In the context of this document the term "provider" always indicate
-   a "DNS provider", i.e. an entity that provides DNS services,
-   eg. DNSSEC-signing and/or authoritative nameservice.
-...
+This document defines four roles. Each is described in detail
+later in the document; the short definitions below are provided
+here as a reading aid.
+
+Provider (DNS Provider):
+:  An entity that provides DNS services to a zone owner, such as
+   DNSSEC signing and/or authoritative nameservice. A zone may
+   have multiple Providers. See {{the-dns-provider}}.
+
+Agent:
+:  A service located with each DNS Provider that manages
+   provider-to-provider communication on behalf of that Provider.
+   The Agent may be a separate component or may be integrated into
+   another component of the Provider's infrastructure. See
+   {{the-agent-integrated-signer-vs-separate-agent}}.
+
+Combiner:
+:  A component (typically deployed per signing Provider) that
+   merges unsigned zone data received from the zone owner with
+   apex RRsets (DNSKEY, CDS, CSYNC, and possibly NS) coordinated
+   among the Agents, and feeds the merged unsigned zone to the
+   local Signer. See {{the-combiner}}.
+
+Auditor:
+:  An entity authorized by the zone owner to observe the
+   multi-provider synchronization for a zone without contributing
+   to it. The Auditor's role is to detect inconsistencies and
+   flag them to the zone owner. See {{the-auditor}}.
 
 # Requirements
 
