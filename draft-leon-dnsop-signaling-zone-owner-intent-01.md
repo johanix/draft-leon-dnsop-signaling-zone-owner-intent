@@ -587,6 +587,212 @@ range without registration. Key number 65535 is reserved and MUST
 NOT be assigned.
 
 
+# HSYNCPARAM Keys
+
+This section defines the eight HSYNCPARAM keys assigned by this
+document. The order reflects the typical sequence of decisions a
+zone owner makes when configuring a multi-provider deployment:
+first the role assignments (who serves the zone, who signs it, who
+audits it), then auxiliary policy (NS management, parent
+synchronization, in-bailiwick naming, and publication intent for
+provider-managed records).
+
+## servers {#servers}
+
+Key number: 0
+
+Type: list of Labels.
+
+The `servers` key signals which Providers are designated to serve
+the zone authoritatively. Each value in the list is a Label
+matching the Label field of an HSYNC3 record in the same zone.
+Providers whose Label appears in `servers` SHOULD configure
+themselves as authoritative for the zone.
+
+The Labels used in HSYNCPARAM list keys are unqualified tokens, not
+fully qualified domain names. They are short handles defined by
+the HSYNC3 records in the same zone; the FQDN of each Provider's
+Agent is given by the HSYNC3 Identity field. See {{the-hsync3-rrset}}
+for the HSYNC3 record format.
+
+Example:
+
+zone.example. IN HSYNCPARAM servers="fox,hare"
+
+## signers {#signers}
+
+Key number: 1
+
+Type: list of Labels.
+
+The `signers` key signals which Providers are designated to sign
+the zone. Each value is an HSYNC3 Label. A Provider whose Label is
+in `signers` is typically also in {{servers}}, but this is not
+required.
+
+Example:
+
+zone.example. IN HSYNCPARAM servers="fox,hare" signers="fox,hare"
+
+## auditors {#auditors}
+
+Key number: 2
+
+Type: list of Labels.
+
+The `auditors` key signals which Providers (or Provider-like
+entities) act as Auditors for the zone. An Auditor observes the
+synchronization between other Providers and may flag
+inconsistencies.
+
+Example:
+
+zone.example. IN HSYNCPARAM servers="fox,hare" signers="fox,hare" auditors="auditor1"
+
+## nsmgmt {#nsmgmt}
+
+Key number: 3
+
+Type: value, one of "owner" or "agent".
+
+The `nsmgmt` key signals who is responsible for the contents of the
+NS RRset for the zone. Two values are defined:
+
+* "owner" — the zone owner is responsible for the NS RRset.
+  Agents MUST NOT instruct their local Combiner to update the NS
+  RRset.
+
+* "agent" — the Providers' Agents collectively are responsible for
+  the NS RRset. Agents whose Provider is listed in {{signers}}
+  MUST instruct their local Combiner to update the NS RRset based
+  on the union of NS records contributed by Providers via
+  Agent-to-Agent communication.
+
+If `nsmgmt` is absent, the default is "owner".
+
+In-bailiwick address records (A/AAAA records for nameservers whose
+name lies within the zone) are not covered by `nsmgmt`. See
+{{suffix}} for the related signaling that lets Providers add their
+own nameserver names and addresses within a designated subname of
+the zone.
+
+Example:
+
+zone.example. IN HSYNCPARAM nsmgmt="agent" signers="fox,hare"
+
+## parentsync {#parentsync}
+
+Key number: 4
+
+Type: value, one of "owner" or "agent".
+
+The `parentsync` key signals who is responsible for synchronizing
+delegation information (NS, glue, DS) with the parent zone. Two
+values are defined:
+
+* "owner" — the zone owner is responsible for sending updates to
+  the parent (via whichever mechanism the parent announces in its
+  DSYNC record).
+
+* "agent" — the Providers' Agents collectively are responsible
+  for parent synchronization; this is typically coordinated via
+  leader election among the Agents.
+
+If `parentsync` is absent, the default is "owner". The specific
+mechanism by which the parent receives the update (NOTIFY,
+DDNS UPDATE, etc.) is announced by the parent via the DSYNC record
+defined in {{!RFC9859}}.
+
+Example:
+
+zone.example. IN HSYNCPARAM nsmgmt="agent" parentsync="agent" signers="fox,hare"
+
+## suffix {#suffix}
+
+Key number: 5
+
+Type: value, a single valid DNS label.
+
+When the `suffix` key is present, DNS Providers MAY add
+in-bailiwick address records to the zone for nameservers they
+contribute — but only for names below `{suffix}.{zone}`. The value
+of the key MUST be a single valid DNS label (not a fully qualified
+domain name).
+
+If `suffix` is absent, Providers MUST NOT add in-bailiwick
+nameserver records (NS or address records) to the zone. The purpose
+of this restriction is to prevent unintended namespace collisions
+between owner-controlled names and Provider-added names.
+
+If `suffix="ns"` is present in HSYNCPARAM, then a Provider with
+Label "fox" MAY add:
+
+zone.example.         IN NS    fox1.ns.zone.example.
+fox1.ns.zone.example. IN A     1.2.3.4
+fox1.ns.zone.example. IN AAAA  2001::53
+
+and similarly for other Providers. Providers MUST coordinate
+amongst themselves (via Agent-to-Agent communication) to avoid
+name collisions below `{suffix}.{zone}`.
+
+Example:
+
+zone.example. IN HSYNCPARAM nsmgmt="agent" signers="fox,hare" suffix="ns"
+
+## pubkey {#pubkey}
+
+Key number: 6
+
+Type: flag.
+
+Keys `pubkey` and `pubcds` (see {{pubcds}}) instruct DNS Providers
+to publish KEY and CDS/CDNSKEY records on behalf of the zone
+owner at well-known names. Without these signals, providers would
+have to scan customer zones for various conventional content (per
+{{!RFC9615}} §3.1 for CDS, and similar conventions for other RR
+types). The HSYNCPARAM record provides a single,
+designed-for-purpose place where the zone owner expresses such
+intent, making the signaling explicit rather than implicit in zone
+content.
+
+The `pubkey` flag signals the zone owner's intent that each
+Provider SHOULD publish the child's SIG(0) KEY at the special name
+`_sig0key.{child}._signal.{their-ns-name}.` in their own
+zone. The use case for this key is the SIG(0) bootstrap mechanism
+for the cross-zone-cut DNS UPDATE messages defined in
+{{?I-D.ietf-dnsop-delegation-mgmt-via-ddns}}.
+
+The `_signal` label in the name pattern is registered in the
+"Underscored and Globally Scoped DNS Node Names" registry
+{{!RFC8552}} by {{!RFC9615}}.
+
+Example:
+
+zone.example. IN HSYNCPARAM signers="fox,hare" pubkey
+
+## pubcds {#pubcds}
+
+Key number: 7
+
+Type: flag.
+
+The `pubcds` flag signals the zone owner's intent that each
+Provider SHOULD publish the zone's CDS and/or CDNSKEY records at
+the special name `_dsboot.{child}._signal.{their-ns-name}.` in
+their own zone, per the DNSSEC bootstrap mechanism defined in
+{{!RFC9615}}.
+
+This signal replaces the implicit RFC 9615 §3.1 convention by
+which Providers would otherwise scan customer zones for CDS or
+CDNSKEY content. Under `pubcds` the zone owner's intent is
+explicit; under absence of `pubcds`, Providers MUST NOT publish
+CDS or CDNSKEY records on behalf of the zone.
+
+Example:
+
+zone.example. IN HSYNCPARAM signers="fox,hare" pubkey pubcds
+
+
 # The HSYNC RRset
 
 The HSYNC RR has the zone name that publishes the HSYNC RRset as the
@@ -1497,16 +1703,19 @@ by this document are listed below; future assignments in the 8-32767
 range are to be made through Specification Required review
 {{?BCP26}}.
 
-| KEY     | Mnemonic   | Description                          | Reference         |
-|---------|------------|--------------------------------------|-------------------|
-| 0-7     | (TBD)      | Defined in a subsequent revision     | (This document)   |
-| 8-32767 | Unassigned |                                      | (This document)   |
-| 32768-65534 | Private Use |                                  | (This document)   |
-| 65535   | Reserved   | MUST NOT be assigned                 | (This document)   |
-
-The specific keys 0-7 defined by this document will be specified in
-a subsequent revision. The registry skeleton (Private Use range and
-Reserved entry) is established by this document.
+| KEY         | Mnemonic    | Description                                 | Reference         |
+|-------------|-------------|---------------------------------------------|-------------------|
+| 0           | servers     | Designated Providers serving the zone       | (This document)   |
+| 1           | signers     | Designated Providers signing the zone       | (This document)   |
+| 2           | auditors    | Designated Auditors for the zone            | (This document)   |
+| 3           | nsmgmt      | Who manages the NS RRset                    | (This document)   |
+| 4           | parentsync  | Who synchronizes with the parent zone       | (This document)   |
+| 5           | suffix      | DNS label below which Providers may add NS/glue | (This document)   |
+| 6           | pubkey      | Publish SIG(0) KEY record under _signal.{nsname} | (This document) |
+| 7           | pubcds      | Publish CDS/CDNSKEY records under _signal.{nsname} | (This document) |
+| 8-32767     | Unassigned  |                                             | (This document)   |
+| 32768-65534 | Private Use |                                             | (This document)   |
+| 65535       | Reserved    | MUST NOT be assigned                        | (This document)   |
 
 ## New Provider-Synchronization EDNS Option
 
