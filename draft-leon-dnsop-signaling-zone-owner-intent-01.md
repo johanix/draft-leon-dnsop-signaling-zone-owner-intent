@@ -1061,6 +1061,18 @@ has been done, the local Agent is able to initiate communication with
 the remote Agent and verify the identity of the responding party via the
 validated JWK or KEY record.
 
+#### Discovery Failure for DNS Transport
+
+If any of the required records (URI, SVCB, JWK or its KEY
+fallback) is missing or fails DNSSEC validation, DNS-transport
+discovery for this remote Agent fails. The local Agent SHOULD log
+the failure with sufficient detail to support operator
+investigation (which record failed, at which step) and SHOULD
+retry discovery the next time it analyzes the zone (typically
+after the next zone transfer). The Agent MUST NOT attempt
+communication with the remote Agent until discovery succeeds; the
+synchronization state for this remote Agent remains "NEEDED"
+rather than transitioning to "KNOWN".
 
 ### Locating a Remote API Transport Agent
 
