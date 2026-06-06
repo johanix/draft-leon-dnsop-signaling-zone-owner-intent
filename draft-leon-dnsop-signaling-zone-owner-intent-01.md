@@ -991,9 +991,9 @@ following steps:
    Agent once communication starts. The KEY record is the legacy
    mechanism; new implementations SHOULD publish JWK records.
 
-Example: given the following HSYNC record for a remote Agent:
+Example: given the following HSYNC3 record for a remote Agent:
 
-zone.example. IN HSYNC  ON  AGENT  SIGN  agent.provider.com. agent.zone.example.
+zone.example. IN HSYNC3  ON  remote  agent.provider.com. .
 
 The local Agent will look up the URI record for agent.provider.com:
 
@@ -1052,9 +1052,9 @@ following steps:
   specified in the URI record. This will enable verification of the
   certificate of the remote Agent once communication starts.
 
-Example: given the following HSYNC record for a remote Agent:
+Example: given the following HSYNC3 record for a remote Agent:
 
-zone.example.     IN HSYNC  ON  AGENT  SIGN  agent.provider.com. agent.zone.example.
+zone.example.     IN HSYNC3  ON  remote  agent.provider.com. .
 
 the local Agent will look up the URI record for agent.provider.com:
 
@@ -1471,47 +1471,61 @@ the received data.
 
 # Migration from Single-Signer to Multi-Signer
 
-The migration from a single-signer to a multi-signer architecture is
-done by changing from only having a single designated signer in the
-HSYNC RRset to having multiple designated signers (i.e. the SIGN field
-changed from "NOSIGN" to "SIGN"). This may be done in several steps.
+The migration from a single-signer to a multi-signer architecture
+is done by adding the second Provider to the {{signers}} list of
+the HSYNCPARAM record. This may be done in several steps.
 
-## Adding a single HSYNC record to an already signed zone
+## Adding HSYNC3 and HSYNCPARAM Records To an Already Signed Zone
 
-Adding a single HSYNC record to a zone that is already signed by the
-DNS provider "provider.com" with NSmgmt=OWNER is a no-op that does not
-change anything in the zone:
+Adding HSYNC3 and HSYNCPARAM records to a zone that is already
+signed by a single DNS Provider, while keeping that Provider as
+the sole signer and the zone owner in charge of NS management, is
+a no-op that does not change anything in the zone:
 
-zone.example. IN HSYNC  ON  OWNER  SIGN  agent.provider.com. upstream.
+zone.example. IN HSYNC3      ON  provider  agent.provider.com.  .
+zone.example. IN HSYNCPARAM  servers="provider" signers="provider"
 
-The zone was already signed by the DNS provider "provider.com" and the
-provider added any needed DNSSEC records, including DNSKEYs. The zone
-NS RRset was managed by the zone owner. All of this is unchanged by
-the addition of the HSYNC RRset.
+The zone was already signed by the DNS Provider "provider.com" and
+the Provider added any needed DNSSEC records, including DNSKEYs.
+The zone NS RRset was managed by the zone owner (the default in
+the absence of {{nsmgmt}}). All of this is unchanged by the
+addition of the two records.
 
-What does change is possibly the zone transfer chain, if the specified
-upstream is different from previously.
+What does change is the possibility of further migration steps
+that build on the now-published signaling.
 
-## Changing the HSYNC NSMGMT Field from AGENT To OWNER
+## Promoting a Provider from Server-Only to Signer
 
-Each Agent publishes the data it contributes to the zone under the
-domain name {zone}.{identity}. I.e. the zone DNSKEYs that the Agent
-agent.provider.com. uses are published as:
+A zone owner may want to start having a Provider sign the zone
+without changing which Providers serve it. With the HSYNC3
+records already in place, this is signaled by adding the
+Provider's Label to the {{signers}} list of HSYNCPARAM. For
+example, starting from a zone where "fox" serves but does not
+sign:
 
-zone.example.agent.provider.com. DNSKEY ...
-zone.example.agent.provider.com. DNSKEY ...
+zone.example. IN HSYNC3      ON  fox   agent.fox.example.   .
+zone.example. IN HSYNC3      ON  hare  agent.hare.example.  fox
+zone.example. IN HSYNCPARAM  servers="fox,hare" signers="hare"
 
-Likewise, the NS records for the zone are published as:
+the zone owner adds "fox" to the signers list:
 
-zone.example.ns.agent.provider.com. NS ...
-zone.example.ns.agent.provider.com. NS ...
+zone.example. IN HSYNCPARAM  servers="fox,hare" signers="fox,hare"
 
-To migrate from "owner maintained" NS RRset to "Agent maintained", the
-zone owner must verify that the NS RRset as published by the Agent is
-correct and in sync with the NS RRset as published by the zone owner
-itself.  After this verification the zone owner changes the HSYNC
-NSmgmt field in the existing HSYNC records from NSmgmt=OWNER to
-NSmgmt=AGENT.
+The HSYNC3 records are unchanged. From this point onward, both
+Providers are designated signers, and the multi-signer "add signer"
+process (see {{?I-D.draft-ietf-dnsop-dnssec-automation}}) is
+initiated by the Agents to bring the new signer's keys into the
+joint DNSKEY RRset.
+
+## Delegating NS Management to the Agents
+
+To migrate from owner-maintained NS RRset to Agent-maintained, the
+zone owner must first verify that the NS RRset as it would be
+computed by the Agents (from the union of their NS contributions)
+is in sync with the NS RRset currently published by the zone
+owner. After this verification the zone owner adds (or changes)
+the `nsmgmt` key in the HSYNCPARAM record to `nsmgmt="agent"`. The
+HSYNC3 records are unchanged.
 
 ## Migrating from a Multi-Signer Architecture Back to Single-Signer.
 
