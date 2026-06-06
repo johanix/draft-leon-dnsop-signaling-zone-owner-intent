@@ -331,6 +331,12 @@ communication complexity. The requirements are only that the Agent is
 treated as a normal secondary (it receives NOTIFY messages and is able
 to request zone transfers).
 
+The remainder of this document writes as if the Agent is a separate
+component. References to "the Agent" in subsequent sections apply
+equally to an integrated Agent function inside a nameserver,
+signer, or other component of the provider's provisioning
+infrastructure.
+
 # Source of Truth
 
 A common design for DNSSEC signing (regardless of multi-signer) is to
