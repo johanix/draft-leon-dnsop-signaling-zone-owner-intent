@@ -1179,6 +1179,33 @@ The response MUST contain a JSON object with the following fields:
 * "transport": The transport capabilities of the remote Agent.
 * "synchronization": The synchronization capabilities of the remote Agent.
 
+### HELLO Failure Handling
+
+The HELLO exchange may fail to complete: the remote Agent may not
+respond, may respond with an error, or may respond with an
+unparseable payload. The local Agent MUST treat the absence of a
+successful HELLO response within a configurable timeout as a
+HELLO failure for that remote Agent.
+
+As a baseline, an Agent SHOULD wait at least 30 seconds before
+treating a missing HELLO response as a timeout, SHOULD apply
+exponential backoff between successive retries (for example,
+doubling the wait time each time), and SHOULD give up after no
+more than 5 retries for a given remote Agent. These numbers are
+intended as defaults that an implementation may override based on
+local operational knowledge.
+
+A remote Agent for which HELLO has not completed remains in the
+"NEEDED" synchronization state. Permanent HELLO failure does not
+affect the zone's continued service: the zone remains available
+and properly signed under the data each Agent already has. What
+the failure does affect is the zone's ability to undergo
+synchronization events (key rollovers, NS RRset changes, etc.)
+that require coordination with the unreachable Agent. An operator
+SHOULD be notified when a remote Agent remains in "NEEDED" state
+beyond the configured retry budget so that the underlying
+connectivity or configuration problem can be addressed.
+
 ### Interpretation of the HELLO Responses
 
 Once an Agent has received HELLO responses from all other Agents that
