@@ -337,26 +337,33 @@ equally to an integrated Agent function inside a nameserver,
 signer, or other component of the provider's provisioning
 infrastructure.
 
-# Source of Truth
+# Authoritative Source per Data Class
+
+In the architecture defined by this document, no single component
+is the authoritative source for all of a zone's data. Different
+classes of data (owner-supplied content, DNSSEC artifacts, the NS
+RRset, and the multi-provider coordination RRsets) each have their
+own authoritative source. This section identifies which component
+authoritatively produces which data class.
 
 A common design for DNSSEC signing (regardless of multi-signer) is to
 use a separate, bump-on-the-wire Signer. This is a Signer that
 receives the unsigned zone via an incoming zone transfer, signs the
 zone, and publishes the signed zone via an outbound zone transfer. In
-such a design the source of truth has been split up between the "zone
-owner" (source of truth for all non-DNSSEC zone data), and the Signer
-(source of truth for all DNSSEC data in the zone plus the DNSKEY RRset).
+such a design the responsibility is split between the "zone owner"
+(authoritative for all non-DNSSEC zone data) and the Signer
+(authoritative for all DNSSEC data in the zone plus the DNSKEY RRset).
 
-In the proposed architecture the source of truth is further split up
+In the proposed architecture the responsibility is further split
 into three participants:
 
- * The zone owner is the source of truth for all unsigned zone data,
+ * The zone owner is authoritative for all unsigned zone data,
    except DNSSEC data and possibly the NS RRset.
-   
- * The Signer is the source of truth for all data generated via DNSSEC
+
+ * The Signer is authoritative for all data generated via DNSSEC
    signing: own DNSKEYs, NSEC/NSEC3 RRs, RRSIGs, etc.
-   
- * The Agent is the source of truth for the RRsets that must be kept in
+
+ * The Agent is authoritative for the RRsets that must be kept in
    sync across all the Signers for the zone. This includes the DNSKEYs
    from other providers, CDS and CSYNC RRsets. Possibly also the NS RRset.
 
@@ -369,7 +376,7 @@ proposed design makes control of the NS RRset explicit and the
 responsibility of the zone owner to choose whether to retain control
 or delegate to the Agents. Hence:
 
- * The Agent is the source of truth for the NS RRset, subject to the
+ * The Agent is authoritative for the NS RRset, subject to the
    policy of the zone owner expressed in the {{nsmgmt}} key of the
    HSYNCPARAM record.
 
