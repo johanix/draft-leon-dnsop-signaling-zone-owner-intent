@@ -1016,7 +1016,12 @@ following steps:
    DNSSEC-validating the KEY record of the URI record target name.
    This enables verification of the SIG(0) public key of the remote
    Agent once communication starts. The KEY record is the legacy
-   mechanism; new implementations SHOULD publish JWK records.
+   mechanism; new implementations SHOULD publish JWK records. The
+   difference is that the KEY record enables SIG(0) signature
+   verification only, while the JWK records additionally enable
+   HPKE encryption of payloads. A deployment that uses only KEY
+   records therefore loses payload confidentiality, while retaining
+   payload authenticity.
 
 Example: given the following HSYNC3 record for a remote Agent:
 
