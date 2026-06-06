@@ -47,20 +47,23 @@ informative:
 
 This document introduces a standardized mechanism for zone owners to
 signal their intent regarding DNS provider responsibilities through
-DNS itself. It defines a new DNS RRtype, HSYNC (Horizontal
-Synchronization), that enables zone owners to designate which
-providers are authorized to serve and/or sign their zones, control
-whether providers or the zone owner manages the NS RRset, and specify
-zone transfer chain configurations.
+DNS itself. It defines two new DNS RRtypes — HSYNC3 (Horizontal
+Synchronization, per-provider enrollment) and HSYNCPARAM
+(zone-wide multi-provider policy) — that together enable zone
+owners to designate which providers are authorized to serve and/or
+sign their zones, control whether providers or the zone owner
+manages the NS RRset, and specify zone transfer chain
+configurations.
 
-The HSYNC record allows DNS providers to discover each other and
-establish secure communication channels, either via DNS messages
-secured by JWS signatures (or legacy SIG(0) signatures) or via a
-RESTful API secured by TLS. This provider-to-provider communication
-via Agents enables automated coordination for tasks such as NS RRset
-management, zone transfers, and DNSSEC-related operations. This
-specification covers the provider discovery and communication
-establishment aspects.
+The HSYNC3 and HSYNCPARAM records allow DNS providers to discover
+each other and establish secure communication channels, either via
+DNS messages secured by JWS signatures (or legacy SIG(0)
+signatures) or via a RESTful API secured by TLS. This
+provider-to-provider communication via Agents enables automated
+coordination for tasks such as NS RRset management, zone
+transfers, and DNSSEC-related operations. This specification
+covers the provider discovery and communication establishment
+aspects.
 
 The document defines two new roles to facilitate this synchronization:
 the Agent responsible for provider-to-provider communication and the
@@ -69,7 +72,8 @@ managed data from providers.
 
 While a distributed DNSSEC multi-signer architecture (similar to 
 "model 2" in RFC8901) is an important application of this framework, 
-the HSYNC mechanism supports broader provider synchronization needs. 
+the HSYNC-based signaling supports broader provider synchronization
+needs. 
 
 The specific synchronization algorithms for multi-signer operation are
 described in {{?I-D.draft-ietf-dnsop-dnssec-automation}}. The DNS CHUNK
@@ -96,22 +100,29 @@ and provider-specific mechanisms.
 
 This document presents a standardized mechanism for zone owners to
 signal their intent regarding DNS provider responsibilities through
-DNS itself. It defines a new DNS RRtype, HSYNC, that allows zone
-owners to:
+DNS itself. It defines two new DNS RRtypes, HSYNC3 and HSYNCPARAM,
+that together allow zone owners to:
 
-* Designate which providers should serve the zone.
+* Designate which providers should serve the zone (via the
+  HSYNCPARAM `servers` key).
 
-* Specify whether each provider should sign the zone.
+* Designate which providers should sign the zone (via the
+  HSYNCPARAM `signers` key).
 
-* Control whether providers or the zone owner manages the NS RRset.
+* Control whether providers or the zone owner manages the NS RRset
+  (via the HSYNCPARAM `nsmgmt` key).
 
-* Specify on a provider-level how the zone transfer chain should be setup.
+* Specify on a provider-level how the zone transfer chain should
+  be set up (via the HSYNC3 Upstream field).
 
-* Enable providers to locate each other and establish secure communication.
+* Enable providers to locate each other and establish secure
+  communication.
 
-By publishing this information in the DNS, zone owners ensure all
-providers receive consistent configuration information. This enables
-automated coordination between providers for tasks like:
+By publishing this information in the DNS, zone owners ensure that
+all providers eventually converge on the same configuration,
+modulo zone-transfer propagation delays and the integrity of the
+zone-transfer path itself (see {{security-considerations}}). This
+enables automated coordination between providers for tasks like:
 
 * NS RRset management across multiple providers.
 
@@ -190,7 +201,8 @@ synchronization are defined as follows:
 
 * DNS providers MUST be able to locate and establish secure
   communication with each other based on the information
-  provided by the zone owner in the DNS via the HSYNC RRset.
+  provided by the zone owner in the DNS via the HSYNC3 RRset
+  and the HSYNCPARAM record.
 
 * The architecture SHOULD support both DNS-based and API-based
   communication between providers.
@@ -352,7 +364,8 @@ responsibility of the zone owner to choose whether to retain control
 or delegate to the Agents. Hence:
 
  * The Agent is the source of truth for the NS RRset, subject to the
-   policy of the zone owner, as described in the HSYNC RRset.
+   policy of the zone owner expressed in the {{nsmgmt}} key of the
+   HSYNCPARAM record.
 
 Making the control of the NS RRset explicit is useful regardless of
 whether a zone uses multiple signers or single signer, as this makes
@@ -389,8 +402,8 @@ The Combiner has the following features:
    COMBINES zone data from the zone owner (the majority of the zone)
    with specific zone data under control of the Agent: three specific
    RRsets, all in the apex of the zone: the DNSKEY, CDS and CSYNC
-   RRsets. According to zone owner policy expressed in the HSYNC RRset
-   it will also update the NS RRset.
+   RRsets. According to zone owner policy expressed in the
+   HSYNCPARAM {{nsmgmt}} key it will also update the NS RRset.
    
  * It is policy free (apart from being limited to the four specified
    RRsets). I.e. the Combiner is not making any judgement about what
@@ -454,12 +467,14 @@ services.
 It is the responsibility of the zone owner to choose a set of "DNS
 Providers", either internal or external to the zone owner's
 organization. These DNS Providers MUST be clearly and uniquely
-designated via publication in the HSYNC RRset, located at the apex of
-the zone and consisting of one HSYNC record for each signer.
+designated via the HSYNC3 RRset (one record per Provider) and the
+HSYNCPARAM record (zone-wide policy referencing the Providers by
+Label), both located at the apex of the zone.
 
-The HSYNC RRset MUST be added, by the zone owner, to the, typically
-unsigned, zone that the zone owner maintains so that this RRset is
-visible to the downstream DNS Providers and their Agents.
+The HSYNC3 RRset and HSYNCPARAM record MUST be added, by the zone
+owner, to the typically unsigned zone that the zone owner
+maintains so that they are visible to the downstream DNS Providers
+and their Agents.
 
 
 TO BE REMOVED BEFORE PUBLICATION:
@@ -947,22 +962,22 @@ straight-forward.
 
 ## Locating Remote Agents
 
-When an Agent receives a zone via zone transfer from the Signer it will
-analyze the zone to see whether it contains an HSYNC RRset. If there
-is no HSYNC RRset the zone MUST be ignored by the Agent from the
-point-of-view of provider synchronization.
+When an Agent receives a zone via zone transfer from the Signer it
+analyzes the zone to see whether it contains an HSYNC3 RRset. If
+there is no HSYNC3 RRset the zone MUST be ignored by the Agent
+from the point-of-view of provider synchronization.
 
-If, however, the zone does contain an HSYNC RRset then the Agent MUST
-analyze this RRset to identify the other Agents for the zone via their
-target names in each HSYNC record. If any of the other Agents listed in
-the HSYNC RRset is previously unknown to this Agent then secure
+If the zone contains an HSYNC3 RRset, the Agent MUST analyze it to
+identify the other Agents for the zone via the Identity field in
+each HSYNC3 record. If any of the other Agents identified by the
+HSYNC3 RRset is previously unknown to this Agent then secure
 communication with this other Agent MUST be established.
 
-Secure communication can be achieved via various transports and it is
-up to the Agents in the zone's HSYNC RRset to determine amongst
-themselves. This document proposes two transports: "DNS" and
-"API". "DNS" is designated as a baseline that Agents MUST support to
-be compliant.
+Secure communication can be achieved via various transports and it
+is up to the Agents named by the zone's HSYNC3 RRset to determine
+amongst themselves. This document proposes two transports: "DNS"
+and "API". "DNS" is designated as a baseline that Agents MUST
+support to be compliant.
 
 The following two subsections describe the mechanism by which an Agent
 SHOULD locate a remote Agent and establish secure DNS-based and
@@ -974,7 +989,7 @@ Locating a remote Agent using the DNS mechanism consists of the
 following steps:
 
  * Lookup and DNSSEC-validate a URI record for the DNS protocol for
-   the HSYNC identity. This provides the domain name and port to
+   the HSYNC3 Identity. This provides the domain name and port to
    which DNS messages should be sent.
 
  * Lookup and DNSSEC-validate the SVCB record of the URI record target
@@ -1042,7 +1057,7 @@ Locating a remote Agent using the API mechanism consists of the
 following steps:
 
 * Lookup and DNSSEC-validate the URI record for the HTTPS protocol
-  for the HSYNC identity. This provides the base URL that will be used
+  for the HSYNC3 Identity. This provides the base URL that will be used
   to construct the individual API endpoints for the REST API. It also
   provides the port to use.
   
@@ -1347,10 +1362,11 @@ sequence diagram below.
 The procedure is as follows:
 
 1. The Agents receive a zone via zone transfer. By
-   analyzing the HSYNC RRset each Agent become aware of the identities
-   of the other Agents for the zone. I.e. each Agent knows which other
-   Agents it needs to communicate with.  Communication with each of
-   these, previously unknown, remote Agents is referred to as "NEEDED".
+   analyzing the HSYNC3 RRset each Agent becomes aware of the
+   identities of the other Agents for the zone. I.e. each Agent
+   knows which other Agents it needs to communicate with.
+   Communication with each of these, previously unknown, remote
+   Agents is referred to as "NEEDED".
 
 2. Each Agent starts acquiring the information needed to establish secure
    communications with any previously unknown Agents. Here we only
@@ -1543,14 +1559,16 @@ single-signer to multi-signer:
 1. The zone owner offboards the second signing DNS Provider (only keeping
    one signing DNS Provider).
 
-When offboarding the second signing DNS Provider is signalled via the
-HSYNC RRset, the multi-step process "remove signer" (as defined in
-{{?I-D.draft-ietf-dnsop-dnssec-automation}}) is initiated to remove
-the second DNS Provider from the zone in a series of steps.
+Offboarding the second signing DNS Provider is signalled by
+removing its Label from the HSYNCPARAM {{signers}} key and
+typically setting the HSYNC3 State for that Provider to "OFF". This
+initiates the multi-step "remove signer" process (as defined in
+{{?I-D.draft-ietf-dnsop-dnssec-automation}}), which removes the
+second DNS Provider's data from the zone in a series of steps.
 
 The zone is now essentially back to a single-signer architecture.
-Once the offboarding is complete, the zone owner may remove the HSYNC
-RRset designating the offboarded DNS Provider from the zone.
+Once the offboarding is complete, the zone owner may remove the
+HSYNC3 record for the offboarded DNS Provider from the zone.
 
 TO BE REMOVED BEFORE PUBLICATION:
 # Rationale
@@ -1580,7 +1598,7 @@ different components rather than make a judgement on software design
 alternatives.  Hence possible implementation choices are left to the
 implementer.
 
-# Security Considerations
+# Security Considerations {#security-considerations}
 
 An architecture for automated multi-provider zone management is a
 complex system with a number of components.  The authors believe that
@@ -1590,11 +1608,12 @@ make the system more robust and more vulnerable.
 
 While all communication between Agents is authenticated (either via
 SIG(0) signatures or TLS), the signalling from the zone owner to the
-Agents is via the HSYNC RRset in an unsigned zone. This is a potential
-attack vector. However, securing zone transfers from zone owner to DNS
-providers is a well-known issue with lots of existing solutions (TSIG,
-zone transfer via a secure channel, zone transfer-over-TLS,
-etc). Employing some of these solutions is strongly recommended.
+Agents is via the HSYNC3 RRset and the HSYNCPARAM record in an
+unsigned zone. This is a potential attack vector. However, securing
+zone transfers from zone owner to DNS providers is a well-known
+issue with lots of existing solutions (TSIG, zone transfer via a
+secure channel, zone transfer-over-TLS, etc). Employing some of
+these solutions is strongly recommended.
 
 From a vulnerability point-of-view this architecture introduces
 several new components into the zone signing and publication
