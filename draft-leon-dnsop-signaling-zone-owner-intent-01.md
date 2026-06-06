@@ -200,31 +200,33 @@ synchronization are defined as follows:
 
 # DNS Provider Synchronization Scenarios
 
-The HSYNC framework supports a variety of scenarios where zone owners
-need to coordinate multiple DNS providers. The following scenarios
-illustrate the range of use cases this mechanism enables:
+The HSYNC-based signaling supports a variety of scenarios where zone
+owners need to coordinate multiple DNS providers. The following
+scenarios illustrate the range of use cases this mechanism enables:
 
 ## Coordinated NS Record Management
 
-A zone owner uses two DNS providers - one signs and serves the zone
-while another only serves it. Through the HSYNC RRset, the zone owner
-signals to both providers who is authorized to do what. The providers'
-Agents establish secure communication channels, allowing them to
-coordinate NS RRset management across all authoritative nameservers
-without manual intervention. The zone owner can decide whether to
-retain control of NS records or delegate this responsibility to the
-providers.
+A zone owner uses two DNS providers — one signs and serves the
+zone while another only serves it. The zone owner publishes one
+HSYNC3 record per provider and an HSYNCPARAM record whose
+{{servers}} key lists both providers and whose {{signers}} key
+lists only the signing one. The providers' Agents establish
+secure communication channels, allowing them to coordinate NS
+RRset management across all authoritative nameservers without
+manual intervention. The zone owner can decide whether to retain
+control of NS records or delegate this responsibility to the
+providers via the {{nsmgmt}} key.
 
 ## Multi-Provider DNSSEC Redundancy
 
 A zone owner needs to eliminate the "signing" single point of failure
 in their DNSSEC setup. By contracting with multiple "multi-signer
-capable" DNS providers and using data from the HSYNC RRset, the zone
-owner enables each provider to:
+capable" DNS providers and listing them in the HSYNCPARAM
+{{signers}} key, the zone owner enables each provider to:
 
-* Locate other designated providers via the HSYNC RRset and establish
-  secure communications.
-  
+* Locate other designated providers via the HSYNC3 RRset and
+  establish secure communications.
+
 * Coordinate DNSKEY, CDS, CSYNC and NS RRset management.
 
 * Sign the zone using its own DNSKEYs while publishing a DNSKEY RRset
@@ -239,17 +241,18 @@ point of failure.
 ## Provider Transition Management
 
 A zone owner wishes to replace their current DNSSEC-signing provider
-with a new one. Using the mechanism provided by the HSYNC RRset, they
-are able to:
+with a new one. Using HSYNC3 + HSYNCPARAM, they are able to:
 
-* Add a new HSYNC record with State="ON" for the incoming provider,
-  initiating the onboarding process.
+* Add a new HSYNC3 record with State="ON" for the incoming provider
+  and add its Label to the HSYNCPARAM {{signers}} key, initiating
+  the onboarding process.
 
 * Allow the automated synchronization between providers to handle key
   exchange and transition.
 
-* Once the new provider is fully operational, change the HSYNC State
-  for the outgoing provider to "OFF" when convenient.
+* Once the new provider is fully operational, change the HSYNC3
+  State for the outgoing provider to "OFF" (and remove its Label
+  from {{signers}}) when convenient.
 
 * The providers then automatically coordinate the safe removal of the
   outgoing provider's data.
@@ -260,27 +263,30 @@ while transitioning between DNS providers.
 ## Delegated NS Management
 
 A zone owner wants DNS providers to handle NS RRset management while
-retaining control of other zone data. By setting the NSMgmt field to
-"AGENT" in the HSYNC RRset, the zone owner explicitly delegates NS
-management responsibility to the DNS providers. The DNS providers then
-coordinate to maintain a consistent NS RRset across all authoritative
-servers, adding or removing nameservers as needed based on the current
-set of authorized providers.
+retaining control of other zone data. By setting the {{nsmgmt}} key
+in HSYNCPARAM to `"agent"`, the zone owner explicitly delegates NS
+management responsibility to the DNS providers. The DNS providers
+then coordinate to maintain a consistent NS RRset across all
+authoritative servers, adding or removing nameservers as needed
+based on the current set of authorized providers.
 
 ## Phased Migration to Multi-Provider Architecture
 
 A zone owner currently using a single provider wants to implement a
 more robust architecture but prefers a gradual transition. They can:
 
-* First add a single HSYNC record designating their current provider,
-  making no immediate operational changes
+* First add a single HSYNC3 record designating their current
+  provider, plus an HSYNCPARAM record listing that provider in
+  {{servers}} (and, if signing, in {{signers}}), making no
+  immediate operational changes.
 
-* Later add a second HSYNC record to designate an additional provider
+* Later add a second HSYNC3 record for the additional provider and
+  extend the HSYNCPARAM lists accordingly.
 
-* Allow the providers to automatically coordinate the transition
+* Allow the providers to automatically coordinate the transition.
 
 * Optionally delegate NS management to the providers by changing
-  NSMgmt from "OWNER" to "AGENT"
+  the {{nsmgmt}} key from `"owner"` to `"agent"`.
 
 This approach enables a controlled, phased migration to a more
 resilient multi-provider architecture.
