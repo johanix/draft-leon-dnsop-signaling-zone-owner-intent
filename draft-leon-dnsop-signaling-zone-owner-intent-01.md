@@ -50,25 +50,29 @@ signal their intent regarding DNS provider responsibilities through
 DNS itself. It defines two new DNS RRtypes — HSYNC3 (Horizontal
 Synchronization, per-provider enrollment) and HSYNCPARAM
 (zone-wide multi-provider policy) — that together enable zone
-owners to designate which providers are authorized to serve and/or
-sign their zones, control whether providers or the zone owner
+owners to designate which Providers are authorized to serve and/or
+sign their zones, control whether Providers or the zone owner
 manages the NS RRset, and specify zone transfer chain
 configurations.
 
-The HSYNC3 and HSYNCPARAM records allow DNS providers to discover
+The HSYNC3 and HSYNCPARAM records allow DNS Providers to discover
 each other and establish secure communication channels, either via
 DNS messages secured by JWS signatures (or legacy SIG(0)
 signatures) or via a RESTful API secured by TLS. This
 provider-to-provider communication via Agents enables automated
 coordination for tasks such as NS RRset management, zone
 transfers, and DNSSEC-related operations. This specification
-covers the provider discovery and communication establishment
+covers the Provider discovery and communication establishment
 aspects.
 
 The document defines two new roles to facilitate this synchronization:
 the Agent responsible for provider-to-provider communication and the
 Combiner which merges unsigned zone data from the zone owner with
-managed data from providers.
+managed data from Providers. It further specifies the Agent
+communication framework that this intent drives: Agent discovery, the
+initial HELLO handshake, periodic BEAT keep-alives, and a
+Provider-Synchronization EDNS(0) Option with its associated operation
+registry.
 
 While a distributed DNSSEC multi-signer architecture (similar to 
 "model 2" in RFC8901) is an important application of this framework, 
@@ -76,9 +80,9 @@ the HSYNC-based signaling supports broader provider synchronization
 needs. 
 
 The specific synchronization algorithms for multi-signer operation are
-described in {{?I-D.draft-ietf-dnsop-dnssec-automation}}. The DNS CHUNK
+described in {{?I-D.ietf-dnsop-dnssec-automation}}. The DNS CHUNK
 transport mechanism used for structured data exchange between agents is
-defined in {{?I-D.draft-berra-dnsop-chunk-transport}}. Specification
+defined in {{?I-D.berra-dnsop-chunk-transport}}. Specification
 for how to express the multi-signer synchronization algorithms over
 provider-to-provider communication is left for a follow-up document.
 
@@ -91,10 +95,10 @@ available there.  The authors (gratefully) accept pull requests.
 
 # Introduction
 
-DNS zone owners often need to work with multiple DNS providers to
-serve their zones. These providers may have different
+DNS zone owners often need to work with multiple DNS Providers to
+serve their zones. These Providers may have different
 responsibilities - some may sign the zone, some may only serve it, and
-some may do both. Traditionally, the configuration of these providers
+some may do both. Traditionally, the configuration of these Providers
 and their responsibilities has been handled through manual processes
 and provider-specific mechanisms.
 
@@ -103,30 +107,30 @@ signal their intent regarding DNS provider responsibilities through
 DNS itself. It defines two new DNS RRtypes, HSYNC3 and HSYNCPARAM,
 that together allow zone owners to:
 
-* Designate which providers should serve the zone (via the
+* Designate which Providers should serve the zone (via the
   HSYNCPARAM `servers` key).
 
-* Designate which providers should sign the zone (via the
+* Designate which Providers should sign the zone (via the
   HSYNCPARAM `signers` key).
 
-* Control whether providers or the zone owner manages the NS RRset
+* Control whether Providers or the zone owner manages the NS RRset
   (via the HSYNCPARAM `nsmgmt` key).
 
 * Specify on a provider-level how the zone transfer chain should
   be set up (via the HSYNC3 Upstream field).
 
-* Enable providers to locate each other and establish secure
+* Enable Providers to locate each other and establish secure
   communication.
 
 By publishing this information in the DNS, zone owners ensure that
-all providers eventually converge on the same configuration,
+all Providers eventually converge on the same configuration,
 modulo zone-transfer propagation delays and the integrity of the
 zone-transfer path itself (see {{security-considerations}}). This
-enables automated coordination between providers for tasks like:
+enables automated coordination between Providers for tasks like:
 
-* NS RRset management across multiple providers.
+* NS RRset management across multiple Providers.
 
-* Addition or removal of providers.
+* Addition or removal of Providers.
 
 * Transition between different signing configurations.
 
@@ -138,14 +142,25 @@ The intent of this document is to define a framework for secure
 provider-to-provider communication, based directly on intent expressed
 by the zone owner.
 
+Although the document's primary purpose is to let a zone owner
+signal intent, that intent is what drives the provider-to-provider
+coordination. This document therefore also specifies the Agent
+communication framework that the intent sets in motion: how Agents
+discover one another, establish secure channels, and exchange
+synchronization state (the HELLO and BEAT exchanges and the
+Provider-Synchronization EDNS(0) Option). The specific
+synchronization algorithms carried over this framework are left to
+follow-up documents (see below).
+
 The mechanism by which agents exchange structured data (zone
 contributions, key state signals, confirmations, etc.) is defined in
-{{?I-D.draft-berra-dnsop-chunk-transport}}, which specifies a DNS
+{{?I-D.berra-dnsop-chunk-transport}}, which specifies a DNS
 CHUNK transport with optional JWK-based authentication and encryption.
 
-Lots of work remains with specification of the details for the various
-synchronization processes that will be expressed over this
-framework. That will take place in follow-up documents.
+This framework is not yet complete: the detailed specification of the
+individual synchronization processes expressed over it is deferred to
+follow-up documents. The framework has been validated by a running
+prototype, and the work to specify those processes is well underway.
 
 Knowledge of DNS NOTIFY {{!RFC1996}} and DNS Dynamic Updates
 {{!RFC2136}} and {{!RFC3007}} is assumed. DNS SIG(0) transaction
@@ -161,7 +176,7 @@ when, and only when, they appear in all capitals, as shown here.
 
 # Terminology
 
-This document defines four roles. Each is described in detail
+This document defines five roles. Each is described in detail
 later in the document; the short definitions below are provided
 here as a reading aid.
 
@@ -184,6 +199,14 @@ Combiner:
    among the Agents, and feeds the merged unsigned zone to the
    local Signer. See {{the-combiner}}.
 
+Signer:
+:  The component (typically deployed per signing Provider) that
+   performs DNSSEC signing. It receives the merged unsigned zone
+   from the local Combiner and produces the signed zone. The
+   Signer is deliberately kept unaware of the multi-provider
+   coordination; that complexity is handled by the Combiner and
+   the Agent. See {{authoritative-source-per-data-class}}.
+
 Auditor:
 :  An entity authorized by the zone owner to observe the
    multi-provider synchronization for a zone without contributing
@@ -195,71 +218,71 @@ Auditor:
 The requirements for an architecture facilitating DNS provider
 synchronization are defined as follows:
 
-* Zone owners MUST be able to signal to their DNS providers
-  information sufficient for the providers to identify each other and
+* Zone owners MUST be able to signal to their DNS Providers
+  information sufficient for the Providers to identify each other and
   establish secure communication.
 
-* All signaling from zone owner to DNS providers SHOULD be carried out
-  via data in the served zone, ensuring that all providers receive the
+* All signaling from zone owner to DNS Providers SHOULD be carried out
+  via data in the served zone, ensuring that all Providers receive the
   same configuration information at approximately the same time.
 
-* Zone owners MUST be able to explicitly specify which DNS providers
+* Zone owners MUST be able to explicitly specify which DNS Providers
   should serve and/or sign their zones.
 
 * Zone owners MUST be able to signal the intent to onboard an
-  additional DNS provider. This MUST automatically initiate the
+  additional DNS Provider. This MUST automatically initiate the
   appropriate provider synchronization processes.
 
 * Zone owners MUST be able to signal the intent to offboard an
-  existing DNS provider. This MUST automatically initiate the
+  existing DNS Provider. This MUST automatically initiate the
   appropriate provider synchronization processes.
 
-* By engaging DNS providers for signing, the zone owner MUST give up
+* By engaging DNS Providers for signing, the zone owner MUST give up
   control over the following records:
   * All DNSSEC-related records in the zone.
   * Any CDS and/or CSYNC RRsets.
 
 * It SHOULD be possible but NOT MANDATORY for the zone owner to also
-  delegate the management of the NS RRset to the set of DNS providers.
+  delegate the management of the NS RRset to the set of DNS Providers.
 
-* DNS providers MUST be able to locate and establish secure
+* DNS Providers MUST be able to locate and establish secure
   communication with each other based on the information
   provided by the zone owner in the DNS via the HSYNC3 RRset
   and the HSYNCPARAM record.
 
 * The architecture SHOULD support both DNS-based and API-based
-  communication between providers.
+  communication between Providers.
 
 * The architecture SHOULD allow for smooth transitions between
-  different provider configurations without service interruption.
+  different Provider configurations without service interruption.
 
 # DNS Provider Synchronization Scenarios
 
 The HSYNC-based signaling supports a variety of scenarios where zone
-owners need to coordinate multiple DNS providers. The following
+owners need to coordinate multiple DNS Providers. The following
 scenarios illustrate the range of use cases this mechanism enables:
 
 ## Coordinated NS Record Management
 
-A zone owner uses two DNS providers — one signs and serves the
+A zone owner uses two DNS Providers — one signs and serves the
 zone while another only serves it. The zone owner publishes one
-HSYNC3 record per provider and an HSYNCPARAM record whose
-{{servers}} key lists both providers and whose {{signers}} key
-lists only the signing one. The providers' Agents establish
+HSYNC3 record per Provider and an HSYNCPARAM record whose
+{{servers}} key lists both Providers and whose {{signers}} key
+lists only the signing one. The Providers' Agents establish
 secure communication channels, allowing them to coordinate NS
 RRset management across all authoritative nameservers without
 manual intervention. The zone owner can decide whether to retain
 control of NS records or delegate this responsibility to the
-providers via the {{nsmgmt}} key.
+Providers via the {{nsmgmt}} key.
 
 ## Multi-Provider DNSSEC Redundancy
 
 A zone owner needs to eliminate the "signing" single point of failure
 in their DNSSEC setup. By contracting with multiple "multi-signer
-capable" DNS providers and listing them in the HSYNCPARAM
-{{signers}} key, the zone owner enables each provider to:
+capable" DNS Providers and listing them in the HSYNCPARAM
+{{signers}} key, the zone owner enables each Provider to:
 
-* Locate other designated providers via the HSYNC3 RRset and
+* Locate other designated Providers via the HSYNC3 RRset and
   establish secure communications.
 
 * Coordinate DNSKEY, CDS, CSYNC and NS RRset management.
@@ -268,59 +291,59 @@ capable" DNS providers and listing them in the HSYNCPARAM
   that includes keys from all authorized signers.
   
 * Distribute the signed zone to its authoritative nameservers and
-  possibly to non-signing downstream providers.
+  possibly to non-signing downstream Providers.
 
 This creates a fully redundant DNSSEC infrastructure with no single
 point of failure.
 
 ## Provider Transition Management
 
-A zone owner wishes to replace their current DNSSEC-signing provider
+A zone owner wishes to replace their current DNSSEC-signing Provider
 with a new one. Using HSYNC3 + HSYNCPARAM, they are able to:
 
-* Add a new HSYNC3 record with State="ON" for the incoming provider
+* Add a new HSYNC3 record with State="ON" for the incoming Provider
   and add its Label to the HSYNCPARAM {{signers}} key, initiating
   the onboarding process.
 
-* Allow the automated synchronization between providers to handle key
+* Allow the automated synchronization between Providers to handle key
   exchange and transition.
 
-* Once the new provider is fully operational, change the HSYNC3
-  State for the outgoing provider to "OFF" (and remove its Label
+* Once the new Provider is fully operational, change the HSYNC3
+  State for the outgoing Provider to "OFF" (and remove its Label
   from {{signers}}) when convenient.
 
-* The providers then automatically coordinate the safe removal of the
-  outgoing provider's data.
+* The Providers then automatically coordinate the safe removal of the
+  outgoing Provider's data.
 
 This entire process maintains continuous service and valid signatures
-while transitioning between DNS providers.
+while transitioning between DNS Providers.
 
 ## Delegated NS Management
 
-A zone owner wants DNS providers to handle NS RRset management while
+A zone owner wants DNS Providers to handle NS RRset management while
 retaining control of other zone data. By setting the {{nsmgmt}} key
 in HSYNCPARAM to `"agent"`, the zone owner explicitly delegates NS
-management responsibility to the DNS providers. The DNS providers
+management responsibility to the DNS Providers. The DNS Providers
 then coordinate to maintain a consistent NS RRset across all
 authoritative servers, adding or removing nameservers as needed
-based on the current set of authorized providers.
+based on the current set of authorized Providers.
 
 ## Phased Migration to Multi-Provider Architecture
 
-A zone owner currently using a single provider wants to implement a
+A zone owner currently using a single Provider wants to implement a
 more robust architecture but prefers a gradual transition. They can:
 
 * First add a single HSYNC3 record designating their current
-  provider, plus an HSYNCPARAM record listing that provider in
+  Provider, plus an HSYNCPARAM record listing that Provider in
   {{servers}} (and, if signing, in {{signers}}), making no
   immediate operational changes.
 
-* Later add a second HSYNC3 record for the additional provider and
+* Later add a second HSYNC3 record for the additional Provider and
   extend the HSYNCPARAM lists accordingly.
 
-* Allow the providers to automatically coordinate the transition.
+* Allow the Providers to automatically coordinate the transition.
 
-* Optionally delegate NS management to the providers by changing
+* Optionally delegate NS management to the Providers by changing
   the {{nsmgmt}} key from `"owner"` to `"agent"`.
 
 This approach enables a controlled, phased migration to a more
@@ -334,7 +357,7 @@ Providers. This is referred to as the Agent.
 
 It is possible to implement support for the synchronization and
 communication needs directly into an existing component of the
-provider's provisioning infrastructure (which may be as simple as an
+Provider's provisioning infrastructure (which may be as simple as an
 authoritative nameserver with or without the ability to do online
 DNSSEC signing). In that case this component implements the Agent
 functionality.
@@ -357,7 +380,7 @@ to request zone transfers).
 The remainder of this document writes as if the Agent is a separate
 component. References to "the Agent" in subsequent sections apply
 equally to an integrated Agent function inside a nameserver,
-signer, or other component of the provider's provisioning
+signer, or other component of the Provider's provisioning
 infrastructure.
 
 # Authoritative Source per Data Class
@@ -388,12 +411,12 @@ into three participants:
 
  * The Agent is authoritative for the RRsets that must be kept in
    sync across all the Signers for the zone. This includes the DNSKEYs
-   from other providers, CDS and CSYNC RRsets. Possibly also the NS RRset.
+   from other Providers, CDS and CSYNC RRsets. Possibly also the NS RRset.
 
 The NS RRset is an interesting special case. Traditionally the NS
 RRset is maintained by the zone owner, but based on data from the DNS
-providers (as authoritative nameservers is a primary service for the
-DNS provider). However, in the proposed architecture the NS RRset
+Providers (as authoritative nameservers is a primary service for the
+DNS Provider). However, in the proposed architecture the NS RRset
 should preferably be maintained by the Agents. For this reason the
 proposed design makes control of the NS RRset explicit and the
 responsibility of the zone owner to choose whether to retain control
@@ -508,13 +531,13 @@ not sign the zone; its purpose is to detect inconsistencies (for
 example, divergence between Providers' DNSKEY contributions, or
 NS RRset drift) and to flag them to the zone owner.
 
-An Auditor participates in the Agent-to-Agent communication for
-the zone in the same way that a serving or signing Provider does:
-it is reachable via an HSYNC3 record (with Identity pointing at
-its Agent), runs an Agent that exchanges synchronization state
-with the Agents of the serving/signing Providers, and is
-designated by the zone owner via the {{auditors}} key of the
-HSYNCPARAM record.
+Auditors participate in the Agent-to-Agent
+communication for the zone. An Auditor is identified via its HSYNC3 record
+just like the Agents, and is designated by the zone owner via the
+{{auditors}} key of the HSYNCPARAM record. Unlike a serving or
+signing Provider, the Auditor does not contribute zone data; it
+joins the same communication purely to observe the synchronization
+state exchanged among the Agents.
 
 The Auditor's interpretation of inconsistencies, and the channel
 through which it reports findings to the zone owner, are out of
@@ -522,11 +545,11 @@ scope for this document. Implementations are free to express these
 as alerts, dashboards, periodic reports, or via any other
 mechanism that suits the deployment.
 
-An Auditor's Agent SHOULD only receive zone data and observe
+An Auditor SHOULD only receive zone data and observe
 synchronization state; it MUST NOT contribute zone data (DNSKEY,
 CDS, CSYNC, NS records, etc.) via the Agent-to-Agent SYNC
-operation. Contributions from an Auditor MUST be silently dropped
-by other Agents.
+operation. Any contribution originating from an Auditor MUST be
+rejected by the Agents.
 
 # Identifying the Designated DNS Providers
 
@@ -549,7 +572,7 @@ TO BE REMOVED BEFORE PUBLICATION:
 
 The signaling described in this document is split across two RR
 types: HSYNC3 carries the per-provider enrollment (one record per
-provider), and HSYNCPARAM carries zone-wide policy (one record per
+Provider), and HSYNCPARAM carries zone-wide policy (one record per
 zone, structured as a list of key-value pairs). An earlier design
 used a single HSYNC record. The two-record model replaces it for
 three reasons:
@@ -561,11 +584,11 @@ three reasons:
 
 * As fields multiplied, each per-provider record had to carry a
   value for every field, even for fields that did not apply to
-  that provider. Most records ended up saying "no" or "0" or
+  that Provider. Most records ended up saying "no" or "0" or
   "off" for most fields.
 
 * The single-record model permitted inconsistent configurations
-  on the wire. For example, two providers could each publish an
+  on the wire. For example, two Providers could each publish an
   HSYNC record claiming a different value for the same zone-wide
   policy field (one saying "the agents handle parent
   synchronization", the other saying "the owner does"). Both
@@ -573,10 +596,10 @@ three reasons:
 
 The two-record model prevents the third problem by construction:
 zone-wide policy lives in HSYNCPARAM (a single record per zone),
-and each provider appears in HSYNCPARAM key values only for the
-keys where that provider participates. It avoids the second
-problem by listing providers only where relevant rather than
-flagging every provider on every field. And it avoids the first
+and each Provider appears in HSYNCPARAM key values only for the
+keys where that Provider participates. It avoids the second
+problem by listing Providers only where relevant rather than
+flagging every Provider on every field. And it avoids the first
 problem by structuring HSYNCPARAM as a registry of keys (analogous
 to the SvcParamKey registry for SVCB), so new signaling concerns
 can be added by registering a new key rather than by changing the
@@ -681,7 +704,7 @@ keys are written as `key="value"`. List keys are written as
 
 Example:
 
-zone.example.   IN HSYNCPARAM  nsmgmt="agent" signers="fox,hare" pubkey
+zone.example.   IN HSYNCPARAM  servers=fox,hare" signers="fox" nsmgmt="agent"
 
 The specific keys defined by this document are listed in
 {{hsyncparam-keys-registry}}.
@@ -863,7 +886,7 @@ Type: flag.
 
 Keys `pubkey` and `pubcds` (see {{pubcds}}) instruct DNS Providers
 to publish KEY and CDS/CDNSKEY records on behalf of the zone
-owner at well-known names. Without these signals, providers would
+owner at well-known names. Without these signals, Providers would
 have to scan customer zones for various conventional content (per
 {{!RFC9615}} §3.1 for CDS, and similar conventions for other RR
 types). The HSYNCPARAM record provides a single,
@@ -914,7 +937,7 @@ zone.example. IN HSYNCPARAM signers="fox,hare" pubkey pubcds
 HSYNC3 and HSYNCPARAM are designed to work together: HSYNC3 names
 the Providers (one record each), and HSYNCPARAM expresses
 zone-wide policy that references those Providers by Label.
-Resolving a policy decision such as "is provider X a signer?"
+Resolving a policy decision such as "is Provider X a signer?"
 therefore requires consulting both records.
 
 The signaling appears in the zone the Agent receives via zone
@@ -956,6 +979,15 @@ In this example, both "fox" and "hare" serve the zone (both are in
 (`nsmgmt="agent"`).
 
 
+# Distributed Synchronization of DNS Data
+
+TODO: describe our current understanding of the synchronization
+problem here (the synchronization model, what data must be kept in
+sync, the eventual-consistency / safety-over-liveness properties,
+and a high-level sketch of the leader/follower vs peer-to-peer
+algorithm families, with the concrete algorithms deferred to
+{{?I-D.ietf-dnsop-dnssec-automation}}).
+
 # Communication Between Agents
 
 For the communication between Agents there are two choices that need to
@@ -973,8 +1005,9 @@ Each has pros and cons and at this point in time it is not clear that
 one always is better than the other. To simplify the choice of
 transport DNS-based communication is mandatory to support and the REST
 API-based communication may only be used if all Agents support
-it. Supported transports are signaled in the Provider-Synchronization
-EDNS(0) Option (see {{provsync-option}}).
+it. Agents signal and negotiate their supported transports as part of
+the Agent-to-Agent communication carried over the CHUNK transport
+{{?I-D.berra-dnsop-chunk-transport}}.
 
 The two defined synchronization alternatives are:
 
@@ -982,7 +1015,8 @@ The two defined synchronization alternatives are:
 * Peer-to-Peer synchronization
 
 Just as for transport, supported synchronization models are signaled
-in the Provider-Synchronization EDNS(0) Option (see {{provsync-option}}).
+and negotiated as part of the Agent-to-Agent communication carried
+over the CHUNK transport {{?I-D.berra-dnsop-chunk-transport}}.
 
 Regardless of the synchronization model and communication method used,
 the Agents SHOULD exchange all needed information about the zone and
@@ -992,8 +1026,8 @@ changes to DNSKEYs, changes to the NS RRset, etc. Depending on
 synchronization model it may also include instructions for changes to
 the zone.
 
-In all cases the information published by a DNS provider to allow
-other providers to locate its Agent MUST be DNSSEC-signed.
+In all cases the information published by a DNS Provider to allow
+other Providers to locate its Agent MUST be DNSSEC-signed.
 
 ## Agent Communication via DNS
 
@@ -1001,7 +1035,7 @@ This transport alternative is based on the observation that all the
 communication needs between Agents can be expressed via DNS
 messages. Structured data (zone contributions, key state signals,
 confirmations) is carried in DNS NOTIFY messages using the CHUNK
-EDNS(0) option defined in {{I-D.draft-berra-dnsop-chunk-transport}}.
+EDNS(0) option defined in {{I-D.berra-dnsop-chunk-transport}}.
 Synchronization state is communicated via the Provider-Synchronization
 EDNS(0) option defined in this document.
 
@@ -1010,7 +1044,7 @@ JWS signatures and confidentiality via HPKE encryption, with
 cryptographic keys discovered from JWK records published in the DNS.
 
 This model builds on the approach used by
-{{?I-D.draft-berra-dnsop-keystate}} for delegation synchronization
+{{?I-D.berra-dnsop-keystate}} for delegation synchronization
 between child and parent, which has already been implemented and
 shown to work.
 
@@ -1068,7 +1102,7 @@ following steps:
    target name. This provides the cryptographic keys needed for
    authenticating and optionally encrypting communication with the
    remote Agent. The JWK record type is defined in
-   {{I-D.draft-berra-dnsop-chunk-transport}}.
+   {{I-D.berra-dnsop-chunk-transport}}.
 
  * If no JWK record is found, fall back to looking up and
    DNSSEC-validating the KEY record of the URI record target name.
@@ -1107,7 +1141,7 @@ The signing key (use="sig") enables verification of JWS-signed
 payloads from the remote Agent. The encryption key (use="enc")
 enables HPKE-encrypted communication with the remote Agent. Both
 key types and their use are defined in
-{{I-D.draft-berra-dnsop-chunk-transport}}.
+{{I-D.berra-dnsop-chunk-transport}}.
 
 If no JWK record is available, the Agent falls back to the KEY record:
 
@@ -1191,7 +1225,7 @@ MUST fall back to DNS-based communication.
 ## The Initial HELLO Phase
 
 When two Agents need to communicate with each other for the first time
-(because they are both designated DNS providers for the same zone), they
+(because they are both designated DNS Providers for the same zone), they
 need to establish secure communication. This is done in a "HELLO"
 phase where the Agents exchange information about their capabilities.
 
@@ -1206,7 +1240,7 @@ When using DNS-based communication the HELLO phase is done by sending
 a NOTIFY(SOA) for the zone that triggered the need for
 communication. The NOTIFY message MUST contain both a
 Provider-Synchronization EDNS(0) Option (see {{provsync-option}}) and
-a CHUNK EDNS(0) option (see {{I-D.draft-berra-dnsop-chunk-transport}})
+a CHUNK EDNS(0) option (see {{I-D.berra-dnsop-chunk-transport}})
 carrying the HELLO payload.
 
 In the Provider-Synchronization EDNS(0) Option the OPERATION field
@@ -1371,7 +1405,7 @@ The OPERATION field in the Provider-Synchronization EDNS(0) option
 identifies the type of message being exchanged. This document defines
 the following operations. The structured data payload for each
 operation is carried in the CHUNK EDNS(0) option
-({{I-D.draft-berra-dnsop-chunk-transport}}) included in the same
+({{I-D.berra-dnsop-chunk-transport}}) included in the same
 DNS message.
 
 ### HELLO (1)
@@ -1452,14 +1486,14 @@ name, key tag, algorithm, and a signal indicating the key state
 transition:
 
 * Signals from Agent to Signer: "propagated" (key has been
-  distributed to all providers), "rejected" (key was rejected),
+  distributed to all Providers), "rejected" (key was rejected),
   "removed" (key has been removed from zones).
 
 * Signals from Signer to Agent: "published" (new key created),
   "retired" (key retired), "inventory" (complete key inventory).
 
 The KEYSTATE operation enables coordinated key rollovers across
-multiple providers.
+multiple Providers.
 
 # Sequence Diagram Example of Establishing Secure Comms - "The Hello Phase"
 
@@ -1484,7 +1518,7 @@ The procedure is as follows:
    to be "KNOWN".
 
 3. Once an Agent has received the required information (URI, SVCB and
-   KEY records in the baseline case) it sends a NOTIFY message with a
+   JWK records in the baseline case) it sends a NOTIFY message with a
    dedicated Provider-Synchronization OPT code with OPERATION="HELLO".
    The sender uses this OPT field to signal its transport and synchronization
    capabilities. Similarly, the responder signals its capabilities
@@ -1506,40 +1540,50 @@ RCODE=NOERROR.
 
 ~~~
 +----------+                 +----------+                        +----------+
-|  Owner   |                 | Agent A  |                        | Agent B  |
+|  Owner   |                 |Provider A|                        |Provider B|
 +----------+                 +----------+                        +----------+
      |                            |                                    |
-     |      AXFR(sign-me.se.)     |                                    |
+     |     AXFR(example.com.)     |                                    |
      |--------------------------->|                                    |
-     |      AXFR(sign-me.se.)     |                                    |
+     |     AXFR(example.com.)     |                                    |
      |---------------------------------------------------------------->|
      |                            |                                    |
      |                            |                                    |
-     |                            |  QUERY _dns._tcp.agent-b.se. URI?  |
+     |                            |  QUERY _dns._tcp.providerA.se. URI?|
      |                            |----------------------------------->|
-     |                            |  QUERY ns.agent-b.se. SVCB?        |
+     |                            | (response target:                  |
+     |                            |  dns.agent.providerA.se.)          |
+     |                            |<-----------------------------------|
+     |                            |  QUERY dns.agent.providerA.se. SVCB|
      |                            |----------------------------------->|
-     |                            |  QUERY ns.agent-b.se. KEY?         |
+     |                            |  QUERY dns.agent.providerA.se. JWK |
      |                            |----------------------------------->|
      |                            |                                    |
      |                            |                                    |
-     |                            |  NOTIFY sign-me.se. OPT(hello)     |
+     |                            |  NOTIFY example.com. OPT(hello)    |
      |                            |----------------------------------->|
-     |                            |  NOERROR sign-me.se. OPT(hello)    |
+     |                            |  NOERROR example.com. OPT(hello)   |
      |                            |<-----------------------------------|
      |                            |                                    |
      |                            |                                    |
-     |                            |  NOTIFY sign-me.se. OPT(beat) |
+     |                            |  NOTIFY example.com. OPT(beat)     |
      |                            |----------------------------------->|
      |                            |                                    |
      |                            |                                    |
-     |                            |  NOTIFY sign-me.se. OPT(beat) |
+     |                            |  NOTIFY example.com. OPT(beat)     |
      |                            |<-----------------------------------|
      |                            |                                    |
      |                            |                                    |
      |                            |                                    |
 
 ~~~
+
+Note: the SVCB and JWK queries are sent to the target name learned
+from the URI record returned in response to the URI query, not to
+the HSYNC3 Identity directly. The JWK record is a DNS encoding of a
+standard JSON Web Key as defined in {{?RFC7517}}; the JWK record
+type and its use are described in
+{{?I-D.berra-dnsop-chunk-transport}}.
 
 # Responsibilities of an Agent
 
@@ -1553,7 +1597,7 @@ data for a zone, each Agent must ensure that the DNS records needed for
 secure communication with other Agents are published:
 
   * URI, SVCB and JWK records required for DNS-based communication
-    with CHUNK transport (see {{I-D.draft-berra-dnsop-chunk-transport}}).
+    with CHUNK transport (see {{I-D.berra-dnsop-chunk-transport}}).
     For backward compatibility, KEY records for SIG(0) MAY also be
     published.
 
@@ -1570,7 +1614,7 @@ information need to be conveyed between parties:
 
 1. Notifications and structured data (sent as DNS NOTIFY carrying a
    CHUNK EDNS(0) option, as defined in
-   {{I-D.draft-berra-dnsop-chunk-transport}}).
+   {{I-D.berra-dnsop-chunk-transport}}).
 
 2. Provider synchronization state (sent via the
    Provider-Synchronization EDNS(0) Option).
@@ -1643,7 +1687,7 @@ zone.example. IN HSYNCPARAM  servers="fox,hare" signers="fox,hare"
 
 The HSYNC3 records are unchanged. From this point onward, both
 Providers are designated signers, and the multi-signer "add signer"
-process (see {{?I-D.draft-ietf-dnsop-dnssec-automation}}) is
+process (see {{?I-D.ietf-dnsop-dnssec-automation}}) is
 initiated by the Agents to bring the new signer's keys into the
 joint DNSKEY RRset.
 
@@ -1671,7 +1715,7 @@ Offboarding the second signing DNS Provider is signalled by
 removing its Label from the HSYNCPARAM {{signers}} key and
 typically setting the HSYNC3 State for that Provider to "OFF". This
 initiates the multi-step "remove signer" process (as defined in
-{{?I-D.draft-ietf-dnsop-dnssec-automation}}), which removes the
+{{?I-D.ietf-dnsop-dnssec-automation}}), which removes the
 second DNS Provider's data from the zone in a series of steps.
 
 The zone is now essentially back to a single-signer architecture.
@@ -1718,7 +1762,7 @@ While all communication between Agents is authenticated (either via
 SIG(0) signatures or TLS), the signalling from the zone owner to the
 Agents is via the HSYNC3 RRset and the HSYNCPARAM record in an
 unsigned zone. This is a potential attack vector. However, securing
-zone transfers from zone owner to DNS providers is a well-known
+zone transfers from zone owner to DNS Providers is a well-known
 issue with lots of existing solutions (TSIG, zone transfer via a
 secure channel, zone transfer-over-TLS, etc). Employing some of
 these solutions is strongly recommended.
@@ -1746,6 +1790,14 @@ functional (as in available and properly signed). Once the Agent is
 able to resume its role, the synchronization process will continue
 from where it left off.
 
+# Acknowledgments
+
+The authors would like to thank the following people for their
+valuable feedback and contributions: Felipe Agnelli Barbosa
+(InternetNZ), Steve DeJong (Vercara), Cristian Elmerot
+(Cloudflare), Matthijs Mekking (ISC), Stefan Ubbink (SIDN), and
+Ralf Weber (Akamai).
+
 # IANA Considerations
 
 **Note to the RFC Editor**: In this section, please replace
@@ -1764,7 +1816,7 @@ Value
 : TBD
 
 Meaning
-: Per-provider enrollment for zone-owner-designated DNS providers
+: Per-provider enrollment for zone-owner-designated DNS Providers
 
 Reference
 : (This document)
@@ -1867,7 +1919,7 @@ Specification Required review {{?BCP26}}.
 > chapter accordingly.
 
 > Agent-to-agent data exchange now uses the CHUNK transport mechanism
-> defined in {{I-D.draft-berra-dnsop-chunk-transport}} instead of the
+> defined in {{I-D.berra-dnsop-chunk-transport}} instead of the
 > per-provider subdomain publication scheme ({zone}.{identity}).
 > Removed the "Enabling Remote Agents to Lookup Zone Data Added By This
 > Agent" section and replaced it with "Exchanging Zone Data Between
