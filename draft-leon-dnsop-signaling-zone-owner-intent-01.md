@@ -1055,8 +1055,11 @@ shown to work.
 ## Agent Communication via REST API
 
 REST APIs are well-known and a natural fit for many distributed
-systems. The challenge is mostly in the initial setup of secure
-communication. The certificates need to be validated, preferably
+systems. Because a REST API can carry arbitrary JSON-serialized data
+structures directly, the same Agent messages (HELLO, BEAT, SYNC,
+etc.) are sent as JSON in the request and response bodies, with no
+CHUNK framing required. The challenge is mostly in the initial setup
+of secure communication. The certificates need to be validated, preferably
 without a requirement on trusting a third party CA. The API endpoints
 for each Agent need to be located. Once secure communication has been
 established, using a REST API for Agent communication is
@@ -1075,15 +1078,19 @@ each HSYNC3 record. If any of the other Agents identified by the
 HSYNC3 RRset is previously unknown to this Agent then secure
 communication with this other Agent MUST be established.
 
-Secure communication can be achieved via various transports and it
-is up to the Agents named by the zone's HSYNC3 RRset to determine
-amongst themselves. This document proposes two transports: "DNS"
-and "API". "DNS" is designated as a baseline that Agents MUST
-support to be compliant.
+This document defines two transports: "DNS" (the baseline, which all
+Agents MUST support) and "API". An Agent signals which transports it
+supports by publishing the corresponding discovery records in the
+DNS; this record publication is what replaced the in-band transport
+signaling of earlier designs.
 
-The following two subsections describe the mechanism by which an Agent
-SHOULD locate a remote Agent and establish secure DNS-based and
-API-based communications, respectively.
+Each transport is discovered through the same three-step shape — a
+URI record at the HSYNC3 Identity, the SVCB record of the URI target,
+and a final record at that target — but the two flows are independent,
+starting from different service-prefixed URI names and ending in
+different records: `_dns._tcp` ending in a JWK record for DNS
+transport, and `_https._tcp` ending in a TLSA record for API
+transport. The following two subsections describe each flow.
 
 ### Locating a Remote DNS Transport Agent
 
@@ -1124,11 +1131,17 @@ SVCB query:
 dns.agent.provider.com.   IN  SVCB  1 . ipv4hint=5.6.7.8 ipv6hint=2001::53
 dns.agent.provider.com.   IN  RRSIG SVCB …
 
-and also a lookup for the JWK record(s) for dns.agent.provider.com:
+and also a lookup for the JWK record(s) for dns.agent.provider.com.
+The JWK RDATA is the base64-encoded JSON Web Key; for example, a
+P-256 signing key (use="sig"):
 
-dns.agent.provider.com.  IN  JWK  {"kty":"EC","crv":"P-256",...,"use":"sig"}
-dns.agent.provider.com.  IN  JWK  {"kty":"OKP","crv":"X25519",...,"use":"enc"}
-dns.agent.provider.com.  IN  RRSIG JWK …
+dns.agent.provider.com.  0 IN JWK (
+                          "eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6In
+                          Q2V3pEYmpaazJWYkFEem1ybGNCVDNvbWIzM2ZVSjJLT
+                          m96NHFSeUNyRjQiLCJ5IjoiRDlBbEg0bTVnMDktTnhY
+                          cnAzSHkxYmdOeXNLUDBBRXp3Qm9aUEVTOGJFdyJ9" )
+dns.agent.provider.com.  0 IN JWK ( "...base64 P-256 enc key..." )
+dns.agent.provider.com.    IN RRSIG JWK …
 
 The signing key (use="sig") enables verification of JWS-signed
 payloads from the remote Agent. The encryption key (use="enc")
@@ -1215,7 +1228,8 @@ MUST fall back to DNS-based communication.
 When two Agents need to communicate with each other for the first time
 (because they are both designated DNS Providers for the same zone), they
 need to establish secure communication. This is done in a "HELLO"
-phase where the Agents exchange information about their capabilities.
+phase where the two Agents exchange HELLO messages to establish
+mutual identity.
 
 If all the information needed for API-based transport for the remote
 party was available, the Agent SHOULD attempt an API-based HELLO. If,
@@ -1229,29 +1243,21 @@ sending a NOTIFY(CHUNK) for the zone that triggered the need for
 communication. The HELLO message itself is carried using CHUNK
 ({{I-D.berra-dnsop-chunk-transport}}).
 
-The HELLO CHUNK payload contains the sender's identity, the zone
-that triggered the communication, and the Agent's transport and
-synchronization capabilities. The payload is optionally signed using
-JWS with the Agent's signing key published as a JWK record.
+The HELLO CHUNK payload contains the sender's identity and the zone
+that triggered the communication. The payload is optionally signed
+using JWS with the Agent's signing key published as a JWK record.
 
 In the response to the NOTIFY, the remote Agent does the same and the
-two Agents can now verify each other's identity and are also aware of
-the other Agent's transport and synchronization capabilities.
+two Agents can now verify each other's identity.
 
 ### API-based HELLO Phase
 
 When using API-based communication the HELLO phase is done by sending
 a REST API POST request to the remote Agent at the "/hello"
 endpoint. The request MUST contain a JSON encoded object with the
-following fields:
-
-* "transport": The transport capabilities of the local Agent.
-* "synchronization": The synchronization capabilities of the local Agent.
-
-The response MUST contain a JSON object with the following fields:
-
-* "transport": The transport capabilities of the remote Agent.
-* "synchronization": The synchronization capabilities of the remote Agent.
+sender's identity and the zone that triggered the communication. The
+response MUST contain a JSON object with the responder's identity,
+establishing mutual identity between the two Agents.
 
 ### HELLO Failure Handling
 
@@ -1280,25 +1286,25 @@ SHOULD be notified when a remote Agent remains in "NEEDED" state
 beyond the configured retry budget so that the underlying
 connectivity or configuration problem can be addressed.
 
-### Interpretation of the HELLO Responses
+### Choosing a Transport
 
-Once an Agent has received HELLO responses from all other Agents that
-are designated signers for the zone, it knows the capabilities of the
-Agents as a group. It can then use this information to determine which
-transport to use:
+An Agent learns which transports each other Agent supports during
+discovery, from which discovery chains resolve: a `_dns._tcp` chain
+ending in a JWK record indicates DNS transport, and a `_https._tcp`
+chain ending in a TLSA record indicates API transport. The transport
+used for a zone is then determined from this group-wide knowledge:
 
-* If all Agents support API-based communication, the Agents will use
+* If all Agents support API-based communication, the Agents use
   API-based communication for this zone.
 
-* If one or more Agents only support DNS-based communication, the
-  Agents will use DNS-based communication for this zone.
+* Otherwise, the Agents use DNS-based communication, which all Agents
+  MUST support.
 
 The synchronization mechanisms themselves are not negotiated per
 zone: Peer-to-Peer synchronization is the baseline used by all
 Agents for the bulk of the coordination work, and leader-based
 synchronization is invoked only for tasks that require a single
-acting Agent (such as parent synchronization), independent of the
-HELLO exchange.
+acting Agent (such as parent synchronization).
 
 ## Defined Message Types {#defined-operations}
 
@@ -1313,13 +1319,13 @@ message type is carried in the CHUNK EDNS(0) option
 ### HELLO
 
 The HELLO message type is used during the initial handshake between
-two Agents that need to communicate for the first time. The HELLO
-message is sent as a DNS NOTIFY carrying a CHUNK payload with the
-sender's identity and the zone that triggered the communication.
-
-The response includes a CHUNK payload with the responder's identity
-and capabilities. Once both sides have exchanged HELLO messages
-successfully, they transition to the operational state.
+two Agents that need to communicate for the first time. It carries
+the sender's identity and the zone that triggered the communication.
+The response carries the responder's identity, establishing mutual
+identity between the two Agents. Once both sides have exchanged HELLO
+messages successfully, they transition to the operational state. The
+HELLO exchange is described in more detail in
+{{the-initial-hello-phase}}.
 
 ### BEAT
 
@@ -1419,10 +1425,10 @@ The procedure is as follows:
    to be "KNOWN".
 
 3. Once an Agent has received the required information (URI, SVCB and
-   JWK records in the baseline case) it sends a NOTIFY carrying a
-   HELLO message using CHUNK framing. The HELLO payload carries
-   the sender's transport and synchronization capabilities; the
-   responder replies with its own capabilities in the same way.
+   JWK records in the baseline case) it sends a HELLO message to the
+   remote Agent. The HELLO carries the sender's identity and the zone
+   that triggered the communication; the responder replies in the
+   same way, establishing mutual identity between the two Agents.
 
 4. When an Agent either receives a successful response to its HELLO
    message or responds successfully to one, it transitions out of
