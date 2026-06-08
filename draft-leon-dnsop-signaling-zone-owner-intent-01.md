@@ -57,8 +57,8 @@ configurations.
 
 The HSYNC3 and HSYNCPARAM records allow DNS Providers to discover
 each other and establish secure communication channels, either via
-DNS messages secured by JWS signatures (or legacy SIG(0)
-signatures) or via a RESTful API secured by TLS. This
+DNS messages secured by JWS signatures or via a RESTful API secured
+by TLS. This
 provider-to-provider communication via Agents enables automated
 coordination for tasks such as NS RRset management, zone
 transfers, and DNSSEC-related operations. This specification
@@ -164,8 +164,7 @@ follow-up documents. The framework has been validated by a running
 prototype, and the work to specify those processes is well underway.
 
 Knowledge of DNS NOTIFY {{!RFC1996}} and DNS Dynamic Updates
-{{!RFC2136}} and {{!RFC3007}} is assumed. DNS SIG(0) transaction
-signatures are documented in {{!RFC2931}}.
+{{!RFC2136}} and {{!RFC3007}} is assumed.
 
 ## Requirements Notation
 
@@ -1109,17 +1108,6 @@ following steps:
    remote Agent. The JWK record type is defined in
    {{I-D.berra-dnsop-chunk-transport}}.
 
- * If no JWK record is found, fall back to looking up and
-   DNSSEC-validating the KEY record of the URI record target name.
-   This enables verification of the SIG(0) public key of the remote
-   Agent once communication starts. The KEY record is the legacy
-   mechanism; new implementations SHOULD publish JWK records. The
-   difference is that the KEY record enables SIG(0) signature
-   verification only, while the JWK records additionally enable
-   JWE encryption of payloads. A deployment that uses only KEY
-   records therefore loses payload confidentiality, while retaining
-   payload authenticity.
-
 Example: given the following HSYNC3 record for a remote Agent:
 
 zone.example. IN HSYNC3  ON  remote  agent.provider.com. .
@@ -1148,21 +1136,16 @@ enables JWE-encrypted communication with the remote Agent. Both
 key types and their use are defined in
 {{I-D.berra-dnsop-chunk-transport}}.
 
-If no JWK record is available, the Agent falls back to the KEY record:
-
-dns.agent.provider.com.  IN  KEY …
-dns.agent.provider.com.  IN  RRSIG KEY …
-
 Once all the DNS lookups and DNSSEC-validation of the returned data
 has been done, the local Agent is able to initiate communication with
 the remote Agent and verify the identity of the responding party via the
-validated JWK or KEY record.
+validated JWK record.
 
 #### Discovery Failure for DNS Transport
 
-If any of the required records (URI, SVCB, JWK or its KEY
-fallback) is missing or fails DNSSEC validation, DNS-transport
-discovery for this remote Agent fails. The local Agent SHOULD log
+If any of the required records (URI, SVCB, JWK) is missing or fails
+DNSSEC validation, DNS-transport discovery for this remote Agent
+fails. The local Agent SHOULD log
 the failure with sufficient detail to support operator
 investigation (which record failed, at which step) and SHOULD
 retry discovery the next time it analyzes the zone (typically
@@ -1514,8 +1497,6 @@ secure communication with other Agents are published:
 
   * URI, SVCB and JWK records required for DNS-based communication
     using CHUNK framing (see {{I-D.berra-dnsop-chunk-transport}}).
-    For backward compatibility, KEY records for SIG(0) MAY also be
-    published.
 
   * URI, SVCB and TLSA records required for API-based communication
     secured by TLS (if supported).
@@ -1668,7 +1649,7 @@ automation. However, automation is a double-edged sword. It can both
 make the system more robust and more vulnerable.
 
 While all communication between Agents is authenticated (either via
-SIG(0) signatures or TLS), the signalling from the zone owner to the
+JWS signatures or TLS), the signalling from the zone owner to the
 Agents is via the HSYNC3 RRset and the HSYNCPARAM record in an
 unsigned zone. This is a potential attack vector. However, securing
 zone transfers from zone owner to DNS Providers is a well-known
