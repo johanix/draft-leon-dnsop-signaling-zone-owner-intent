@@ -70,9 +70,9 @@ the Agent responsible for provider-to-provider communication and the
 Combiner which merges unsigned zone data from the zone owner with
 managed data from Providers. It further specifies the Agent
 communication framework that this intent drives: Agent discovery, the
-initial HELLO handshake, periodic BEAT keep-alives, and a
-Provider-Synchronization EDNS(0) Option with its associated operation
-registry.
+initial HELLO handshake, and the ongoing BEAT keep-alives and
+synchronization messages exchanged between Agents over the CHUNK
+transport.
 
 While a distributed DNSSEC multi-signer architecture (similar to 
 "model 2" in RFC8901) is an important application of this framework, 
@@ -147,8 +147,8 @@ signal intent, that intent is what drives the provider-to-provider
 coordination. This document therefore also specifies the Agent
 communication framework that the intent sets in motion: how Agents
 discover one another, establish secure channels, and exchange
-synchronization state (the HELLO and BEAT exchanges and the
-Provider-Synchronization EDNS(0) Option). The specific
+synchronization state through the HELLO and BEAT exchanges and other
+messages carried over the CHUNK transport. The specific
 synchronization algorithms carried over this framework are left to
 follow-up documents (see below).
 
@@ -1009,14 +1009,20 @@ it. Agents signal and negotiate their supported transports as part of
 the Agent-to-Agent communication carried over the CHUNK transport
 {{?I-D.berra-dnsop-chunk-transport}}.
 
-The two defined synchronization alternatives are:
+Synchronization between Agents uses two mechanisms, applied to
+different tasks rather than chosen as alternatives:
 
-* Leader/Follower synchronization (mandatory to support)
-* Peer-to-Peer synchronization
+* **Peer-to-Peer** synchronization is the baseline, used for the bulk
+  of the coordination work (DNSKEY, CDS, CSYNC, and NS RRset
+  reconciliation among the Agents).
 
-Just as for transport, supported synchronization models are signaled
-and negotiated as part of the Agent-to-Agent communication carried
-over the CHUNK transport {{?I-D.berra-dnsop-chunk-transport}}.
+* **Leader-based** synchronization is used only for tasks that require
+  a single Agent to act on behalf of the group — most notably
+  synchronization with the parent zone — where the acting Agent is
+  chosen by leader election.
+
+Both mechanisms run over the Agent-to-Agent CHUNK transport
+{{?I-D.berra-dnsop-chunk-transport}}.
 
 Regardless of the synchronization model and communication method used,
 the Agents SHOULD exchange all needed information about the zone and
@@ -1031,17 +1037,18 @@ other Providers to locate its Agent MUST be DNSSEC-signed.
 
 ## Agent Communication via DNS
 
-This transport alternative is based on the observation that all the
-communication needs between Agents can be expressed via DNS
-messages. Structured data (zone contributions, key state signals,
-confirmations) is carried in DNS NOTIFY messages using the CHUNK
-EDNS(0) option defined in {{I-D.berra-dnsop-chunk-transport}}.
-Synchronization state is communicated via the Provider-Synchronization
-EDNS(0) option defined in this document.
+Agents can express all of their communication needs over the CHUNK
+transport defined in {{I-D.berra-dnsop-chunk-transport}}. Structured
+data — zone contributions, key state signals, synchronization state,
+and confirmations — is carried between Agents over CHUNK; that
+document specifies how CHUNK data is carried in DNS messages and
+reassembled, and this document does not constrain the carriage
+mechanism.
 
 The CHUNK transport optionally provides payload authentication via
-JWS signatures and confidentiality via HPKE encryption, with
-cryptographic keys discovered from JWK records published in the DNS.
+JWS signatures and confidentiality via JWE ({{?RFC7516}}) encryption,
+using cryptographic keys discovered from JWK records published in the
+DNS (see {{I-D.berra-dnsop-chunk-transport}}).
 
 This model builds on the approach used by
 {{?I-D.berra-dnsop-keystate}} for delegation synchronization
@@ -1111,7 +1118,7 @@ following steps:
    mechanism; new implementations SHOULD publish JWK records. The
    difference is that the KEY record enables SIG(0) signature
    verification only, while the JWK records additionally enable
-   HPKE encryption of payloads. A deployment that uses only KEY
+   JWE encryption of payloads. A deployment that uses only KEY
    records therefore loses payload confidentiality, while retaining
    payload authenticity.
 
@@ -1139,7 +1146,7 @@ dns.agent.provider.com.  IN  RRSIG JWK …
 
 The signing key (use="sig") enables verification of JWS-signed
 payloads from the remote Agent. The encryption key (use="enc")
-enables HPKE-encrypted communication with the remote Agent. Both
+enables JWE-encrypted communication with the remote Agent. Both
 key types and their use are defined in
 {{I-D.berra-dnsop-chunk-transport}}.
 
@@ -1236,21 +1243,15 @@ HELLO.
 
 ### DNS-based HELLO Phase
 
-When using DNS-based communication the HELLO phase is done by sending
-a NOTIFY(SOA) for the zone that triggered the need for
-communication. The NOTIFY message MUST contain both a
-Provider-Synchronization EDNS(0) Option (see {{provsync-option}}) and
-a CHUNK EDNS(0) option (see {{I-D.berra-dnsop-chunk-transport}})
-carrying the HELLO payload.
+When using DNS-based communication the HELLO phase is initiated by
+sending a NOTIFY(CHUNK) for the zone that triggered the need for
+communication. The HELLO message itself is carried over the CHUNK
+transport ({{I-D.berra-dnsop-chunk-transport}}).
 
-In the Provider-Synchronization EDNS(0) Option the OPERATION field
-MUST have the value "HELLO" (1). Furthermore, the Agent signals its
-transport and synchronization capabilities in the TRANSPORT and
-SYNCHRONIZATION fields. The CHUNK payload contains the sender's
-identity and the zone that triggered the communication. The payload
-is optionally signed using JWS with the Agent's signing key published
-as a JWK record, or signed using the SIG(0) key published as a KEY
-record for backward compatibility.
+The HELLO CHUNK payload contains the sender's identity, the zone
+that triggered the communication, and the Agent's transport and
+synchronization capabilities. The payload is optionally signed using
+JWS with the Agent's signing key published as a JWK record.
 
 In the response to the NOTIFY, the remote Agent does the same and the
 two Agents can now verify each other's identity and are also aware of
@@ -1311,118 +1312,37 @@ transport to use:
 * If one or more Agents only support DNS-based communication, the
   Agents will use DNS-based communication for this zone.
 
-Likewise, each Agent now knows the provider synchronization
-capabilities of the other Agents and can determine which
-synchronization model to use:
+The synchronization mechanisms themselves are not negotiated per
+zone: Peer-to-Peer synchronization is the baseline used by all
+Agents for the bulk of the coordination work, and leader-based
+synchronization is invoked only for tasks that require a single
+acting Agent (such as parent synchronization), independent of the
+HELLO exchange.
 
-* If all Agents support the Peer-to-Peer synchronization model, the
-  Agents will use the Peer-to-Peer synchronization model for this
-  zone.
+## Defined Message Types {#defined-operations}
 
-* If one or more Agents only support the Leader/Follower
-  synchronization model, the Agents will use the Leader/Follower
-  synchronization model for this zone.
+The MessageType field of the CHUNK EDNS(0) option identifies the type
+of message being sent. CHUNK message types are strings, and
+implementations may define additional message types as needed. The
+message types used by the Agent-to-Agent communication described in
+this document are listed below. The structured data payload for each
+message type is carried in the CHUNK EDNS(0) option
+({{I-D.berra-dnsop-chunk-transport}}).
 
-## Provider-Synchronization EDNS(0) Option Format {#provsync-option}
+### HELLO
 
-This document uses an Extended Mechanism for DNS (EDNS0) {{!RFC6891}}
-option to include DNS Provider synchronization information in DNS
-messages.
+The HELLO message type is used during the initial handshake between
+two Agents that need to communicate for the first time. The HELLO
+message is sent as a DNS NOTIFY carrying a CHUNK payload with the
+sender's identity and the zone that triggered the communication.
 
-The Provider-Synchronization EDNS(0) option is structured as follows:
-
-~~~
-                                               1   1   1   1   1   1
-       0   1   2   3   4   5   6   7   8   9   0   1   2   3   4   5
-     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
- 0:  |                            OPTION-CODE                        |
-     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
- 2:  |                           OPTION-LENGTH                       |
-     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
- 4:  |           OPERATION           |           TRANSPORT           |
-     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
- 6:  |    SYNCHRONIZATION-MODEL      |                               /
-     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
- 7:  / OPERATION-BODY                                                /
-     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-~~~
-
-Field definition details:
-
-OPTION-CODE:
-    2 octets / 16 bits (defined in {{!RFC6891}}) contains the value TBD
-    for Provider-Synchronization.
-
-OPTION-LENGTH:
-    2 octets / 16 bits (defined in {{!RFC6891}}) contains
-    the length of the payload (everything after OPTION-LENGTH) in
-    octets and should be 3 plus the length of the OPERATION-BODY field
-    (which may be zero octets long).
-
-OPERATION:
-    8 bits. Signals the type of operation the message performs.
-    Defined values are listed in {{defined-operations}}.
-
-TRANSPORT:
-    8 bits. Encodes the transport capabilities of the Agent. With
-    8 bits it is possible to define up to 8 different transports of
-    which this document defines two: DNS and API.
-
-SYNCHRONIZATION-MODEL:
-    8 bits. Encodes the synchronization capabilities of the Agent.
-    With 8 bits it is possible to define up to 8 different
-    synchronization models of which this document identifies two:
-    Leader/Follower and Peer-to-Peer.
-
-OPERATION-BODY:
-    Variable-length. Used to carry operation-specific parameters.
-
-### Encoding Transport Capabilities in the Provider-Synchronization EDNS(0) Option
-
-An Agent signals the union of its transport capabilities by setting the
-corresponding bits to 1.
-
-0: DNS transport supported (baseline, MUST be supported by all Agents)
-
-1: API transport supported
-
-2-7: unused
-
-### Encoding Synchronization Capabilities in the Provider-Synchronization EDNS(0) Option
-
-An Agent signals its synchronization capabilities by setting the
-corresponding bits to 1.
-
-0: Leader/Follower multi-signer synchronization supported
-
-1: Peer-to-Peer multi-signer synchronization supported
-
-2-7: unused
-
-## Defined Operations {#defined-operations}
-
-The OPERATION field in the Provider-Synchronization EDNS(0) option
-identifies the type of message being exchanged. This document defines
-the following operations. The structured data payload for each
-operation is carried in the CHUNK EDNS(0) option
-({{I-D.berra-dnsop-chunk-transport}}) included in the same
-DNS message.
-
-### HELLO (1)
-
-The HELLO operation is used during the initial handshake between two
-Agents that need to communicate for the first time. The HELLO message
-is sent as a DNS NOTIFY with both the Provider-Synchronization option
-(OPERATION=HELLO) and a CHUNK option containing a JSON payload with
-the sender's identity and the zone that triggered the communication.
-
-The response includes a CHUNK option with the responder's identity
+The response includes a CHUNK payload with the responder's identity
 and capabilities. Once both sides have exchanged HELLO messages
 successfully, they transition to the operational state.
 
-### BEAT (2)
+### BEAT
 
-The BEAT operation (heartbeat) is used for periodic keep-alive
+The BEAT message type (heartbeat) is used for periodic keep-alive
 signaling between Agents that have established communication. The
 BEAT message carries the sender's identity, the list of zones shared
 between the two Agents, and the sender's intended heartbeat interval.
@@ -1431,43 +1351,43 @@ An Agent that does not receive a BEAT from a peer within a
 configurable timeout SHOULD consider the peer unreachable and MAY
 attempt to re-establish communication via the HELLO phase.
 
-### PING (3)
+### PING
 
-The PING operation is used to test connectivity with a remote Agent.
-The PING carries a random nonce that the responder echoes back in the
-response. This enables round-trip verification of the communication
-path.
+The PING message type is used to test connectivity with a remote
+Agent. The PING carries a random nonce that the responder echoes back
+in the response. This enables round-trip verification of the
+communication path.
 
-### SYNC (4)
+### SYNC
 
-The SYNC operation is used for Agent-to-Agent zone data
+The SYNC message type is used for Agent-to-Agent zone data
 synchronization. The CHUNK payload contains the zone data that the
 sending Agent contributes (DNSKEY, CDS, CSYNC, and optionally NS
 records). The receiving Agent processes the data according to its
 local policy and returns a confirmation indicating which records were
 accepted, removed, or rejected.
 
-### UPDATE (5)
+### UPDATE
 
-The UPDATE operation is used for Agent-to-Combiner zone data
+The UPDATE message type is used for Agent-to-Combiner zone data
 contributions. It carries the same payload format as SYNC, but the
 recipient is the local Combiner rather than a remote Agent. The
 Combiner returns an immediate "pending" acknowledgment and processes
 the update asynchronously, sending a detailed CONFIRM message once
 processing is complete.
 
-### CONFIRM (6)
+### CONFIRM
 
-The CONFIRM operation is used to send an explicit confirmation
+The CONFIRM message type is used to send an explicit confirmation
 message, typically as an asynchronous response to a previously
 received SYNC or UPDATE. The CHUNK payload contains the distribution
 ID of the original message, the processing status (success, partial,
 or error), and per-record detail of which records were accepted,
 removed, or rejected.
 
-### RFI (7)
+### RFI
 
-The RFI (Request For Information) operation is used to request
+The RFI (Request For Information) message type is used to request
 specific data from a remote Agent or Signer. The RFI message includes
 an RFI subtype indicating what information is being requested:
 
@@ -1478,9 +1398,9 @@ an RFI subtype indicating what information is being requested:
 
 The response contains the requested data in the CHUNK payload.
 
-### KEYSTATE (8)
+### KEYSTATE
 
-The KEYSTATE operation is used for DNSSEC key lifecycle signaling
+The KEYSTATE message type is used for DNSSEC key lifecycle signaling
 between an Agent and its Signer. The CHUNK payload includes the zone
 name, key tag, algorithm, and a signal indicating the key state
 transition:
@@ -1492,7 +1412,7 @@ transition:
 * Signals from Signer to Agent: "published" (new key created),
   "retired" (key retired), "inventory" (complete key inventory).
 
-The KEYSTATE operation enables coordinated key rollovers across
+The KEYSTATE message type enables coordinated key rollovers across
 multiple Providers.
 
 # Sequence Diagram Example of Establishing Secure Comms - "The Hello Phase"
@@ -1518,25 +1438,23 @@ The procedure is as follows:
    to be "KNOWN".
 
 3. Once an Agent has received the required information (URI, SVCB and
-   JWK records in the baseline case) it sends a NOTIFY message with a
-   dedicated Provider-Synchronization OPT code with OPERATION="HELLO".
-   The sender uses this OPT field to signal its transport and synchronization
-   capabilities. Similarly, the responder signals its capabilities
-   using the same field.
+   JWK records in the baseline case) it sends a NOTIFY carrying a
+   HELLO message over the CHUNK transport. The HELLO payload carries
+   the sender's transport and synchronization capabilities; the
+   responder replies with its own capabilities in the same way.
 
-4. When an Agent either gets a NOERROR response to its NOTIFY OPT(hello)
-   message or responds with a NOERROR, it transitions out of "The
-   Hello Phase" with the exchanging party and they transition to the
-   next phase where they start sending NOTIFY OPT(beat) signals
-   instead. The communication with the remote Agent is now considered to
-   be in the "OPERATIONAL" state.
+4. When an Agent either receives a successful response to its HELLO
+   message or responds successfully to one, it transitions out of
+   "The Hello Phase" with the exchanging party and they transition to
+   the next phase where they start sending BEAT messages instead. The
+   communication with the remote Agent is now considered to be in the
+   "OPERATIONAL" state.
 
 In the case where one Agent is aware of the need to communicate with
 another Agent, but the other is not (eg. the zone transfer was delayed
-for one of them), the slower one SHOULD respond with a RCODE=REFUSED
-to any NOTIFY OPT(hello) it receives. Once it is ready, it will send
-its own NOTIFY OPT(hello) which should be responded to with a
-RCODE=NOERROR.
+for one of them), the slower one SHOULD reject any HELLO message it
+receives. Once it is ready, it will send its own HELLO message, which
+should then be accepted.
 
 ~~~
 +----------+                 +----------+                        +----------+
@@ -1560,17 +1478,17 @@ RCODE=NOERROR.
      |                            |----------------------------------->|
      |                            |                                    |
      |                            |                                    |
-     |                            |  NOTIFY example.com. OPT(hello)    |
+     |                            |  HELLO(example.com)                |
      |                            |----------------------------------->|
-     |                            |  NOERROR example.com. OPT(hello)   |
+     |                            |  HELLO response                    |
      |                            |<-----------------------------------|
      |                            |                                    |
      |                            |                                    |
-     |                            |  NOTIFY example.com. OPT(beat)     |
+     |                            |  BEAT                              |
      |                            |----------------------------------->|
      |                            |                                    |
      |                            |                                    |
-     |                            |  NOTIFY example.com. OPT(beat)     |
+     |                            |  BEAT                              |
      |                            |<-----------------------------------|
      |                            |                                    |
      |                            |                                    |
@@ -1609,21 +1527,15 @@ secure communication with other Agents are published:
 
 ## Exchanging Zone Data Between Agents
 
-When using DNS transport between Agents, the following types of
-information need to be conveyed between parties:
+Agents exchange synchronization messages — HELLO, BEAT, SYNC, and
+the other message types defined in {{defined-operations}} — over
+either DNS- or API-transport. The messages themselves are the same in
+both cases; in the DNS case they are encapsulated in CHUNKs, the
+framing mechanism defined in {{I-D.berra-dnsop-chunk-transport}},
+whereas API-transport carries the JSON-serialized messages directly.
 
-1. Notifications and structured data (sent as DNS NOTIFY carrying a
-   CHUNK EDNS(0) option, as defined in
-   {{I-D.berra-dnsop-chunk-transport}}).
-
-2. Provider synchronization state (sent via the
-   Provider-Synchronization EDNS(0) Option).
-
-3. Confirmations and responses (sent as DNS NOTIFY carrying a CHUNK
-   EDNS(0) option in the response or as a separate NOTIFY).
-
-The data that each Agent contributes for synchronization with other
-Agents includes:
+The zone data that each Agent contributes to the other Agents for a
+zone consists of:
 
   * The DNSKEY RRset for the zone consisting of the DNSKEYs that the
     local Signer for this DNS Provider uses to sign the zone.
@@ -1637,11 +1549,10 @@ Agents includes:
     authoritative nameservers that this DNS Provider is responsible
     for (when NS management is delegated to the Agents).
 
-This data is exchanged between Agents via CHUNK NOTIFY messages
-(see {{defined-operations}}). Each Agent sends its zone data
-contributions to all other Agents for the zone. The receiving Agent
-is responsible for instructing its local Combiner to incorporate
-the received data.
+Each Agent sends its zone data contributions to all other Agents for
+the zone using the SYNC message type (see {{defined-operations}}).
+The receiving Agent is responsible for instructing its local Combiner
+to incorporate the received data.
 
 # Migration from Single-Signer to Multi-Signer
 
@@ -1861,45 +1772,6 @@ range are to be made through Specification Required review
 | 8-32767     | Unassigned  |                                             | (This document)   |
 | 32768-65534 | Private Use |                                             | (This document)   |
 | 65535       | Reserved    | MUST NOT be assigned                        | (This document)   |
-
-## New Provider-Synchronization EDNS Option
-
-This document defines a new EDNS(0) option, entitled "Provider-Synchronization",
-assigned a value of TBD in the "DNS EDNS0 Option Codes (OPT)" registry
-
-TO BE REMOVED UPON PUBLICATION:
-[https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-11](foo)
-
-~~~
-   +-------+--------------------------+----------+----------------------+
-   | Value | Name                     | Status   | Reference            |
-   +-------+--------------------------+----------+----------------------+
-   | TBD   | Provider-Synchronization | Standard | ( This document )    |
-   +-------+--------------------------+----------+----------------------+
-~~~
-
-## A New Registry for EDNS Option Provider-Synchronization Operation Codes {#provsync-registry}
-
-The Provider-Synchronization option also defines an 8-bit operation field, for
-which IANA is requested to create and maintain a new registry entitled
-"Provider-Synchronization Operations", used by the Provider-Synchronization
-option. Initial values for the "Provider-Synchronization Operations" registry
-are given below; future assignments in the 9-127 range are to be made through
-Specification Required review {{?BCP26}}.
-
-| OPERATION | Mnemonic   | Description                        | Reference         |
-|-----------|------------|------------------------------------|-------------------|
-| 0         | FORBIDDEN  | Reserved, MUST NOT be used         | (This document)   |
-| 1         | HELLO      | Initial handshake                  | (This document)   |
-| 2         | BEAT       | Heartbeat / keep-alive             | (This document)   |
-| 3         | PING       | Connectivity test with nonce       | (This document)   |
-| 4         | SYNC       | Agent-to-Agent zone data sync      | (This document)   |
-| 5         | UPDATE     | Agent-to-Combiner zone contribution| (This document)   |
-| 6         | CONFIRM    | Asynchronous confirmation          | (This document)   |
-| 7         | RFI        | Request For Information            | (This document)   |
-| 8         | KEYSTATE   | DNSSEC key lifecycle signaling     | (This document)   |
-| 9-127     | Unassigned |                                    | (This document)   |
-| 128-255   | Private Use|                                    | (This document)   |
 
 --- back
 
