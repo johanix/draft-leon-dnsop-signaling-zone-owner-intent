@@ -71,7 +71,7 @@ Combiner which merges unsigned zone data from the zone owner with
 managed data from Providers. It further specifies the Agent
 communication framework that this intent drives: Agent discovery, the
 initial HELLO handshake, and the ongoing BEAT keep-alives and
-synchronization messages exchanged between Agents over the CHUNK
+synchronization messages exchanged between Agents over DNS or API
 transport.
 
 While a distributed DNSSEC multi-signer architecture (similar to 
@@ -148,14 +148,15 @@ coordination. This document therefore also specifies the Agent
 communication framework that the intent sets in motion: how Agents
 discover one another, establish secure channels, and exchange
 synchronization state through the HELLO and BEAT exchanges and other
-messages carried over the CHUNK transport. The specific
-synchronization algorithms carried over this framework are left to
-follow-up documents (see below).
+messages between the Agents. The specific synchronization algorithms
+carried over this framework are left to follow-up documents (see
+below).
 
 The mechanism by which agents exchange structured data (zone
 contributions, key state signals, confirmations, etc.) is defined in
-{{?I-D.berra-dnsop-chunk-transport}}, which specifies a DNS
-CHUNK transport with optional JWK-based authentication and encryption.
+{{?I-D.berra-dnsop-chunk-transport}}, which specifies the CHUNK
+framing mechanism with optional JWK-based authentication and
+encryption.
 
 This framework is not yet complete: the detailed specification of the
 individual synchronization processes expressed over it is deferred to
@@ -1006,8 +1007,7 @@ one always is better than the other. To simplify the choice of
 transport DNS-based communication is mandatory to support and the REST
 API-based communication may only be used if all Agents support
 it. Agents signal and negotiate their supported transports as part of
-the Agent-to-Agent communication carried over the CHUNK transport
-{{?I-D.berra-dnsop-chunk-transport}}.
+the Agent-to-Agent communication.
 
 Synchronization between Agents uses two mechanisms, applied to
 different tasks rather than chosen as alternatives:
@@ -1021,8 +1021,7 @@ different tasks rather than chosen as alternatives:
   synchronization with the parent zone — where the acting Agent is
   chosen by leader election.
 
-Both mechanisms run over the Agent-to-Agent CHUNK transport
-{{?I-D.berra-dnsop-chunk-transport}}.
+Both mechanisms run over either DNS or API transport.
 
 Regardless of the synchronization model and communication method used,
 the Agents SHOULD exchange all needed information about the zone and
@@ -1037,18 +1036,17 @@ other Providers to locate its Agent MUST be DNSSEC-signed.
 
 ## Agent Communication via DNS
 
-Agents can express all of their communication needs over the CHUNK
-transport defined in {{I-D.berra-dnsop-chunk-transport}}. Structured
-data — zone contributions, key state signals, synchronization state,
-and confirmations — is carried between Agents over CHUNK; that
-document specifies how CHUNK data is carried in DNS messages and
-reassembled, and this document does not constrain the carriage
-mechanism.
+Structured data — zone contributions, key state signals,
+synchronization state, and confirmations — cannot be sent over DNS
+as-is, since DNS carries only resource records or opaque option data.
+The CHUNK framing mechanism defined in
+{{I-D.berra-dnsop-chunk-transport}} encodes such structured data for
+transport over DNS; this document relies on that mechanism without
+constraining how it works.
 
-The CHUNK transport optionally provides payload authentication via
-JWS signatures and confidentiality via JWE ({{?RFC7516}}) encryption,
-using cryptographic keys discovered from JWK records published in the
-DNS (see {{I-D.berra-dnsop-chunk-transport}}).
+CHUNK optionally provides payload authentication via JWS signatures
+and confidentiality via JWE ({{?RFC7516}}) encryption, using
+cryptographic keys discovered from JWK records published in the DNS.
 
 This model builds on the approach used by
 {{?I-D.berra-dnsop-keystate}} for delegation synchronization
@@ -1245,8 +1243,8 @@ HELLO.
 
 When using DNS-based communication the HELLO phase is initiated by
 sending a NOTIFY(CHUNK) for the zone that triggered the need for
-communication. The HELLO message itself is carried over the CHUNK
-transport ({{I-D.berra-dnsop-chunk-transport}}).
+communication. The HELLO message itself is carried using CHUNK
+({{I-D.berra-dnsop-chunk-transport}}).
 
 The HELLO CHUNK payload contains the sender's identity, the zone
 that triggered the communication, and the Agent's transport and
@@ -1439,7 +1437,7 @@ The procedure is as follows:
 
 3. Once an Agent has received the required information (URI, SVCB and
    JWK records in the baseline case) it sends a NOTIFY carrying a
-   HELLO message over the CHUNK transport. The HELLO payload carries
+   HELLO message using CHUNK framing. The HELLO payload carries
    the sender's transport and synchronization capabilities; the
    responder replies with its own capabilities in the same way.
 
@@ -1515,7 +1513,7 @@ data for a zone, each Agent must ensure that the DNS records needed for
 secure communication with other Agents are published:
 
   * URI, SVCB and JWK records required for DNS-based communication
-    with CHUNK transport (see {{I-D.berra-dnsop-chunk-transport}}).
+    using CHUNK framing (see {{I-D.berra-dnsop-chunk-transport}}).
     For backward compatibility, KEY records for SIG(0) MAY also be
     published.
 
