@@ -57,8 +57,8 @@ configurations.
 
 The HSYNC3 and HSYNCPARAM records allow DNS Providers to discover
 each other and establish secure communication channels, either via
-DNS messages secured by JWS signatures or via a RESTful API secured
-by TLS. This
+DNS messages secured by JWS signatures (or legacy SIG(0)
+signatures) or via a RESTful API secured by TLS. This
 provider-to-provider communication via Agents enables automated
 coordination for tasks such as NS RRset management, zone
 transfers, and DNSSEC-related operations. This specification
@@ -70,9 +70,9 @@ the Agent responsible for provider-to-provider communication and the
 Combiner which merges unsigned zone data from the zone owner with
 managed data from Providers. It further specifies the Agent
 communication framework that this intent drives: Agent discovery, the
-initial HELLO handshake, and the ongoing BEAT keep-alives and
-synchronization messages exchanged between Agents over DNS or API
-transport.
+initial HELLO handshake, periodic BEAT keep-alives, and a
+Provider-Synchronization EDNS(0) Option with its associated operation
+registry.
 
 While a distributed DNSSEC multi-signer architecture (similar to 
 "model 2" in RFC8901) is an important application of this framework, 
@@ -147,16 +147,15 @@ signal intent, that intent is what drives the provider-to-provider
 coordination. This document therefore also specifies the Agent
 communication framework that the intent sets in motion: how Agents
 discover one another, establish secure channels, and exchange
-synchronization state through the HELLO and BEAT exchanges and other
-messages between the Agents. The specific synchronization algorithms
-carried over this framework are left to follow-up documents (see
-below).
+synchronization state (the HELLO and BEAT exchanges and the
+Provider-Synchronization EDNS(0) Option). The specific
+synchronization algorithms carried over this framework are left to
+follow-up documents (see below).
 
 The mechanism by which agents exchange structured data (zone
 contributions, key state signals, confirmations, etc.) is defined in
-{{?I-D.berra-dnsop-chunk-transport}}, which specifies the CHUNK
-framing mechanism with optional JWK-based authentication and
-encryption.
+{{?I-D.berra-dnsop-chunk-transport}}, which specifies a DNS
+CHUNK transport with optional JWK-based authentication and encryption.
 
 This framework is not yet complete: the detailed specification of the
 individual synchronization processes expressed over it is deferred to
@@ -164,7 +163,8 @@ follow-up documents. The framework has been validated by a running
 prototype, and the work to specify those processes is well underway.
 
 Knowledge of DNS NOTIFY {{!RFC1996}} and DNS Dynamic Updates
-{{!RFC2136}} and {{!RFC3007}} is assumed.
+{{!RFC2136}} and {{!RFC3007}} is assumed. DNS SIG(0) transaction
+signatures are documented in {{!RFC2931}}.
 
 ## Requirements Notation
 
@@ -193,18 +193,16 @@ Agent:
    {{the-agent-integrated-signer-vs-separate-agent}}.
 
 Combiner:
-:  A component (deployed per Provider) that persists the contributions
-   coordinated among the Agents and merges the role-permitted apex
-   RRsets (DNSKEY, CDS, CSYNC, and possibly NS) with the unsigned zone
-   data received from the zone owner, feeding the merged zone to the
+:  A component (typically deployed per signing Provider) that
+   merges unsigned zone data received from the zone owner with
+   apex RRsets (DNSKEY, CDS, CSYNC, and possibly NS) coordinated
+   among the Agents, and feeds the merged unsigned zone to the
    local Signer. See {{the-combiner}}.
 
 Signer:
-:  The component (deployed per Provider) that performs DNSSEC
-   signing. It receives the merged zone from the local Combiner and
-   produces the served zone. For an unsigned zone the Signer makes no
-   changes but remains in the path as the upstream for the Provider's
-   public secondaries. The
+:  The component (typically deployed per signing Provider) that
+   performs DNSSEC signing. It receives the merged unsigned zone
+   from the local Combiner and produces the signed zone. The
    Signer is deliberately kept unaware of the multi-provider
    coordination; that complexity is handled by the Combiner and
    the Agent. See {{authoritative-source-per-data-class}}.
@@ -502,22 +500,6 @@ between the zone owner, the Combiner, the Signer and the Agent:
              +-----+                                              +---+
 ~~~
 
-In the reference architecture every Provider deploys all three
-components — Combiner, Signer, and Agent — and every zone the
-Provider serves flows through the same path: from the upstream zone
-owner to the Combiner, then to the Signer, then to the Agent and on
-to the Provider's public secondary nameservers. A Provider typically
-serves a large number of zones, some signed and some not, and a zone
-may change between unsigned and signed over its lifetime (for
-example when the zone owner requests signing via HSYNCPARAM). Rather
-than maintain a different zone-transfer path per zone, all zones use
-this one path. For an unsigned zone the Signer makes no
-modifications — it is effectively a pass-through — but it remains in
-the path, continuing to serve as the dependable upstream for the
-Provider's public secondaries. Signing status therefore changes what
-the components *do* for a given zone, not which components are
-present or how zone data flows between them.
-
 ## The DNS Provider
 
 A "DNS Provider" is a term that is most commonly used to refer to an
@@ -529,19 +511,15 @@ entity that provides some subset of the following services:
  * Serving the zone via a set of authoritative nameservers.
  * Distributing the signed zone to other downstream DNS Providers.
 
-In addition to the above services, a DNS Provider in the reference
-architecture provides all three of the internal components:
+In addition to the above services a DNS Provider MUST also provide:
 
-* A Combiner that persists Agent contributions and merges the
-  role-permitted changes into the zone;
-* a Signer that performs DNSSEC signing (a no-op for unsigned zones,
-  see {{the-combiner}}); and
-* an Agent for synchronization with the other Providers' Agents.
+* An Agent for synchronization with other DNS Providers
+* A Combiner for the management of changes to the zone via
+  the synchronization among Agents (if it provides a signer)
 
-Whether a Provider actually signs a given zone, and which of the
-coordinated RRsets it applies, depends on its role for that zone
-(expressed via HSYNCPARAM) — not on which components it deploys.
-Every Provider provides all three internal components.
+I.e. in the setup above there are two DNS Providers, both of which are
+"complete" in the sense that they provide all three of the above
+services.
 
 ## The Auditor
 
@@ -1003,189 +981,12 @@ In this example, both "fox" and "hare" serve the zone (both are in
 
 # Distributed Synchronization of DNS Data
 
-When a zone is served (and possibly signed) by more than one
-Provider, a small set of apex RRsets must be kept consistent across
-all of them: the DNSKEY RRset (the union of every signer's keys),
-the CDS and CSYNC RRsets used to drive parent synchronization, and,
-when NS management is delegated, the NS RRset. Each Provider
-contributes its own part of these RRsets, and every Provider must
-converge on the same combined result.
-
-## The Synchronization Problem
-
-The difficulty is that the contributions arrive independently and
-asynchronously. Each Provider's Agent contributes when its local
-state changes — a new DNSKEY is published, a nameserver is added or
-removed — and those contributions reach the other Agents at
-different times, over a communication mesh that may be partitioned
-or delayed. There is no global lock and no single component that
-owns the combined result (see {{authoritative-source-per-data-class}}).
-
-The synchronization model is therefore one of eventual consistency:
-given a stable set of contributions, all Providers converge on the
-same combined RRsets, but they do not do so atomically. Two
-properties bound this convergence:
-
-* Safety over liveness. At every point during synchronization the
-  zone remains available and correctly signed under the data each
-  Provider already holds. If a contribution is delayed or an Agent
-  is unreachable, synchronization pauses rather than producing an
-  inconsistent or unsigned zone; it resumes from where it stopped
-  once the missing input arrives. A multi-signer key rollover
-  illustrates this: when one signing Provider introduces a new key,
-  that key is not relied upon for the zone until every signing
-  Provider has confirmed it has published the new key in the joint
-  DNSKEY RRset. If one signer is slow or temporarily unreachable,
-  the rollover does not fail — it simply pauses until that signer
-  catches up, and the zone stays valid under the keys already in
-  effect throughout.
-
-* Role asymmetry. The Providers do not all play the same role for a
-  zone. A non-signing Provider still participates in coordination
-  (for example, contributing NS records when NS management is
-  delegated), but it must not act on contributions that only a
-  signer may apply. What a Provider does with a contribution depends
-  on its role, expressed by the zone owner through the HSYNCPARAM
-  keys defined in this document.
-
-A second consequence of role asymmetry is that not every Provider
-ends up serving identical zone content: the coordinated RRsets are
-the same everywhere, but, for example, a Provider's served zone
-reflects only the NS management policy in force. The model below
-makes this precise.
-
-## Persisting All, Applying by Role
-
-The Combiner ({{the-combiner}}) at each Provider receives
-contributions from the Agents and merges the role-permitted ones
-with the owner's zone data, passing the merged zone to the local
-Signer. Conceptually the Combiner maintains three derived views:
-
-* the per-Agent contributions, one set per contributing Agent,
-  retained as received;
-
-* a merged view, deduplicating the per-Agent contributions for the
-  same owner name and RRtype into a single combined RRset; and
-
-* the live zone served to queries, produced by applying the merged
-  view to the owner's zone data.
-
-The central rule that makes distributed synchronization well-defined
-is the separation of these two actions:
-
-> Every Combiner persists all contributions received from
-> authorized Agents; each Combiner applies to its live zone only
-> those contributions that its role permits.
-
-Persistence is unconditional: a contribution from an authorized
-Agent is always retained, regardless of the receiving Provider's
-role. Application is conditional on role. A non-signing Provider's
-Combiner therefore holds the same set of contributions as a signing
-Provider's Combiner; the two differ only in what reaches the served
-zone. Retaining the full contribution set at every Provider is what
-allows a Provider's role to change — or a new signer to be
-onboarded — without first having to re-gather data that some
-Provider had previously discarded.
-
-In this architecture the Combiner, not the Agent, is the component
-responsible for durably persisting contributions, for two reasons:
-
-* The Combiner must hold the complete set of contributions so that
-  it can re-apply the role-permitted changes to every new version of
-  the unsigned zone it receives from the zone owner. Each inbound
-  zone transfer from the owner replaces the owner-supplied content,
-  and the coordinated RRsets must be merged in again; the Combiner
-  can only do this if it retains the contributions independently of
-  any single zone version.
-
-* Keeping the persistent state in the Combiner lets the Agent be
-  restartable at any time. The Agent holds no durable contribution
-  state of its own; when an Agent restarts, it resynchronizes by
-  requesting the current set of contributions from its Combiner, on
-  a per-zone basis, and resumes from there. This keeps the Agent
-  close to stateless and avoids a separate recovery mechanism in the
-  Agent.
-
-## Role-Derived Edit Policy
-
-Whether a Combiner applies a given contribution to its live zone is
-determined by four conditions, all derived from the zone's
-HSYNCPARAM record and the Combiner's own role:
-
-* whether the zone is signed;
-* whether this Provider is a signer (its Label appears in the
-  {{signers}} key);
-* whether NS management is delegated to the Agents ({{nsmgmt}} is
-  "agent"); and
-* whether parent synchronization is delegated to the Agents
-  ({{parentsync}} is "agent").
-
-Each coordinated RRset is applied only when the corresponding
-conditions hold. A Combiner MUST apply a received contribution to
-its live zone only when the condition in the following table is
-satisfied for that RRset, and MUST otherwise retain the contribution
-without applying it:
-
-| RRset  | Applied to the live zone when                          |
-|--------|--------------------------------------------------------|
-| NS     | nsmgmt=agent AND (zone unsigned OR we are a signer)     |
-| DNSKEY | zone signed AND we are a signer                        |
-| CDS    | zone signed AND we are a signer AND parentsync=agent   |
-| CSYNC  | zone signed AND we are a signer AND parentsync=agent   |
-| KEY    | parentsync=agent AND (zone unsigned OR we are a signer) |
-
-The KEY RRset in this table is the SIG(0) public key used for parent
-synchronization via DNS UPDATE; it is unrelated to the JWK-based
-keys used for Agent-to-Agent authentication. DNSKEY is meaningful
-only for signed zones, while NS and KEY may be applied by any
-Provider's Combiner for an unsigned zone, gated only by the
-nsmgmt and parentsync policies respectively.
-
-## Reporting Whether a Contribution Was Applied
-
-Because a contribution may be persisted by a Combiner without being
-applied, the Agent that originated it needs to learn which of the
-two happened. A Combiner reports one of three outcomes for each
-contributed RRset:
-
-* applied — the contribution was persisted and reached the live
-  zone;
-
-* persisted-not-applied — the contribution was persisted but the
-  role-derived edit policy did not permit applying it (the running
-  implementation labels this status IGNORED). This is a definitive
-  outcome: it is not an error, and the originating Agent SHOULD NOT
-  retry; the data is safely held; and
-
-* rejected — the contribution was not accepted at all, for example
-  because the contributing Agent is not authorized to contribute zone
-  data. This is the expected outcome for any contribution originating
-  from an Auditor ({{the-auditor}}), which participates in the
-  synchronization but MUST NOT contribute zone data.
-
-Both "applied" and "persisted-not-applied" are definitive answers
-that allow the originating Agent to stop tracking the contribution
-as outstanding. When an Agent has sent a contribution to several
-recipients, the contribution is considered applied for the zone if
-ANY recipient reports "applied"; it is considered persisted-not-
-applied only if ALL recipients report "persisted-not-applied". This
-lets the originating Agent answer the operationally important
-question: did any Provider actually apply my data? A contribution
-that every recipient persists but none applies (for example, an NS
-contribution to a zone whose owner retains NS management) is
-correctly reported as applied nowhere, without being treated as a
-failure.
-
-## Scope
-
-This section defines the synchronization model and the invariants
-that every implementation must share: what data is kept in sync, the
-persist-all / apply-by-role rule, the role-derived edit policy, and
-the contribution-reporting semantics. The concrete multi-step
-synchronization processes built on this model — adding or removing a
-signer, coordinated key rollovers, NS RRset reconciliation, and
-parent synchronization — are out of scope for this document and are
-specified separately (see {{?I-D.ietf-dnsop-dnssec-automation}}).
+TODO: describe our current understanding of the synchronization
+problem here (the synchronization model, what data must be kept in
+sync, the eventual-consistency / safety-over-liveness properties,
+and a high-level sketch of the leader/follower vs peer-to-peer
+algorithm families, with the concrete algorithms deferred to
+{{?I-D.ietf-dnsop-dnssec-automation}}).
 
 # Communication Between Agents
 
@@ -1205,21 +1006,17 @@ one always is better than the other. To simplify the choice of
 transport DNS-based communication is mandatory to support and the REST
 API-based communication may only be used if all Agents support
 it. Agents signal and negotiate their supported transports as part of
-the Agent-to-Agent communication.
+the Agent-to-Agent communication carried over the CHUNK transport
+{{?I-D.berra-dnsop-chunk-transport}}.
 
-Synchronization between Agents uses two mechanisms, applied to
-different tasks rather than chosen as alternatives:
+The two defined synchronization alternatives are:
 
-* **Peer-to-Peer** synchronization is the baseline, used for the bulk
-  of the coordination work (DNSKEY, CDS, CSYNC, and NS RRset
-  reconciliation among the Agents).
+* Leader/Follower synchronization (mandatory to support)
+* Peer-to-Peer synchronization
 
-* **Leader-based** synchronization is used only for tasks that require
-  a single Agent to act on behalf of the group — most notably
-  synchronization with the parent zone — where the acting Agent is
-  chosen by leader election.
-
-Both mechanisms run over either DNS or API transport.
+Just as for transport, supported synchronization models are signaled
+and negotiated as part of the Agent-to-Agent communication carried
+over the CHUNK transport {{?I-D.berra-dnsop-chunk-transport}}.
 
 Regardless of the synchronization model and communication method used,
 the Agents SHOULD exchange all needed information about the zone and
@@ -1234,16 +1031,16 @@ other Providers to locate its Agent MUST be DNSSEC-signed.
 
 ## Agent Communication via DNS
 
-Structured data — zone contributions, key state signals,
-synchronization state, and confirmations — cannot be sent over DNS
-as-is, since DNS carries only resource records or opaque option data.
-The CHUNK framing mechanism defined in
-{{I-D.berra-dnsop-chunk-transport}} encodes such structured data for
-transport over DNS; this document relies on that mechanism without
-constraining how it works.
+This transport alternative is based on the observation that all the
+communication needs between Agents can be expressed via DNS
+messages. Structured data (zone contributions, key state signals,
+confirmations) is carried in DNS NOTIFY messages using the CHUNK
+EDNS(0) option defined in {{I-D.berra-dnsop-chunk-transport}}.
+Synchronization state is communicated via the Provider-Synchronization
+EDNS(0) option defined in this document.
 
-CHUNK optionally provides payload authentication via JWS signatures
-and confidentiality via JWE ({{?RFC7516}}) encryption, using
+The CHUNK transport optionally provides payload authentication via
+JWS signatures and confidentiality via HPKE encryption, with
 cryptographic keys discovered from JWK records published in the DNS.
 
 This model builds on the approach used by
@@ -1254,11 +1051,8 @@ shown to work.
 ## Agent Communication via REST API
 
 REST APIs are well-known and a natural fit for many distributed
-systems. Because a REST API can carry arbitrary JSON-serialized data
-structures directly, the same Agent messages (HELLO, BEAT, SYNC,
-etc.) are sent as JSON in the request and response bodies, with no
-CHUNK framing required. The challenge is mostly in the initial setup
-of secure communication. The certificates need to be validated, preferably
+systems. The challenge is mostly in the initial setup of secure
+communication. The certificates need to be validated, preferably
 without a requirement on trusting a third party CA. The API endpoints
 for each Agent need to be located. Once secure communication has been
 established, using a REST API for Agent communication is
@@ -1277,19 +1071,15 @@ each HSYNC3 record. If any of the other Agents identified by the
 HSYNC3 RRset is previously unknown to this Agent then secure
 communication with this other Agent MUST be established.
 
-This document defines two transports: "DNS" (the baseline, which all
-Agents MUST support) and "API". An Agent signals which transports it
-supports by publishing the corresponding discovery records in the
-DNS; this record publication is what replaced the in-band transport
-signaling of earlier designs.
+Secure communication can be achieved via various transports and it
+is up to the Agents named by the zone's HSYNC3 RRset to determine
+amongst themselves. This document proposes two transports: "DNS"
+and "API". "DNS" is designated as a baseline that Agents MUST
+support to be compliant.
 
-Each transport is discovered through the same three-step shape — a
-URI record at the HSYNC3 Identity, the SVCB record of the URI target,
-and a final record at that target — but the two flows are independent,
-starting from different service-prefixed URI names and ending in
-different records: `_dns._tcp` ending in a JWK record for DNS
-transport, and `_https._tcp` ending in a TLSA record for API
-transport. The following two subsections describe each flow.
+The following two subsections describe the mechanism by which an Agent
+SHOULD locate a remote Agent and establish secure DNS-based and
+API-based communications, respectively.
 
 ### Locating a Remote DNS Transport Agent
 
@@ -1314,6 +1104,17 @@ following steps:
    remote Agent. The JWK record type is defined in
    {{I-D.berra-dnsop-chunk-transport}}.
 
+ * If no JWK record is found, fall back to looking up and
+   DNSSEC-validating the KEY record of the URI record target name.
+   This enables verification of the SIG(0) public key of the remote
+   Agent once communication starts. The KEY record is the legacy
+   mechanism; new implementations SHOULD publish JWK records. The
+   difference is that the KEY record enables SIG(0) signature
+   verification only, while the JWK records additionally enable
+   HPKE encryption of payloads. A deployment that uses only KEY
+   records therefore loses payload confidentiality, while retaining
+   payload authenticity.
+
 Example: given the following HSYNC3 record for a remote Agent:
 
 zone.example. IN HSYNC3  ON  remote  agent.provider.com. .
@@ -1330,34 +1131,33 @@ SVCB query:
 dns.agent.provider.com.   IN  SVCB  1 . ipv4hint=5.6.7.8 ipv6hint=2001::53
 dns.agent.provider.com.   IN  RRSIG SVCB …
 
-and also a lookup for the JWK record(s) for dns.agent.provider.com.
-The JWK RDATA is the base64-encoded JSON Web Key; for example, a
-P-256 signing key (use="sig"):
+and also a lookup for the JWK record(s) for dns.agent.provider.com:
 
-dns.agent.provider.com.  0 IN JWK (
-                          "eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6In
-                          Q2V3pEYmpaazJWYkFEem1ybGNCVDNvbWIzM2ZVSjJLT
-                          m96NHFSeUNyRjQiLCJ5IjoiRDlBbEg0bTVnMDktTnhY
-                          cnAzSHkxYmdOeXNLUDBBRXp3Qm9aUEVTOGJFdyJ9" )
-dns.agent.provider.com.  0 IN JWK ( "...base64 P-256 enc key..." )
-dns.agent.provider.com.    IN RRSIG JWK …
+dns.agent.provider.com.  IN  JWK  {"kty":"EC","crv":"P-256",...,"use":"sig"}
+dns.agent.provider.com.  IN  JWK  {"kty":"OKP","crv":"X25519",...,"use":"enc"}
+dns.agent.provider.com.  IN  RRSIG JWK …
 
 The signing key (use="sig") enables verification of JWS-signed
 payloads from the remote Agent. The encryption key (use="enc")
-enables JWE-encrypted communication with the remote Agent. Both
+enables HPKE-encrypted communication with the remote Agent. Both
 key types and their use are defined in
 {{I-D.berra-dnsop-chunk-transport}}.
+
+If no JWK record is available, the Agent falls back to the KEY record:
+
+dns.agent.provider.com.  IN  KEY …
+dns.agent.provider.com.  IN  RRSIG KEY …
 
 Once all the DNS lookups and DNSSEC-validation of the returned data
 has been done, the local Agent is able to initiate communication with
 the remote Agent and verify the identity of the responding party via the
-validated JWK record.
+validated JWK or KEY record.
 
 #### Discovery Failure for DNS Transport
 
-If any of the required records (URI, SVCB, JWK) is missing or fails
-DNSSEC validation, DNS-transport discovery for this remote Agent
-fails. The local Agent SHOULD log
+If any of the required records (URI, SVCB, JWK or its KEY
+fallback) is missing or fails DNSSEC validation, DNS-transport
+discovery for this remote Agent fails. The local Agent SHOULD log
 the failure with sufficient detail to support operator
 investigation (which record failed, at which step) and SHOULD
 retry discovery the next time it analyzes the zone (typically
@@ -1427,8 +1227,7 @@ MUST fall back to DNS-based communication.
 When two Agents need to communicate with each other for the first time
 (because they are both designated DNS Providers for the same zone), they
 need to establish secure communication. This is done in a "HELLO"
-phase where the two Agents exchange HELLO messages to establish
-mutual identity.
+phase where the Agents exchange information about their capabilities.
 
 If all the information needed for API-based transport for the remote
 party was available, the Agent SHOULD attempt an API-based HELLO. If,
@@ -1437,26 +1236,40 @@ HELLO.
 
 ### DNS-based HELLO Phase
 
-When using DNS-based communication the HELLO phase is initiated by
-sending a NOTIFY(CHUNK) for the zone that triggered the need for
-communication. The HELLO message itself is carried using CHUNK
-({{I-D.berra-dnsop-chunk-transport}}).
+When using DNS-based communication the HELLO phase is done by sending
+a NOTIFY(SOA) for the zone that triggered the need for
+communication. The NOTIFY message MUST contain both a
+Provider-Synchronization EDNS(0) Option (see {{provsync-option}}) and
+a CHUNK EDNS(0) option (see {{I-D.berra-dnsop-chunk-transport}})
+carrying the HELLO payload.
 
-The HELLO CHUNK payload contains the sender's identity and the zone
-that triggered the communication. The payload is optionally signed
-using JWS with the Agent's signing key published as a JWK record.
+In the Provider-Synchronization EDNS(0) Option the OPERATION field
+MUST have the value "HELLO" (1). Furthermore, the Agent signals its
+transport and synchronization capabilities in the TRANSPORT and
+SYNCHRONIZATION fields. The CHUNK payload contains the sender's
+identity and the zone that triggered the communication. The payload
+is optionally signed using JWS with the Agent's signing key published
+as a JWK record, or signed using the SIG(0) key published as a KEY
+record for backward compatibility.
 
 In the response to the NOTIFY, the remote Agent does the same and the
-two Agents can now verify each other's identity.
+two Agents can now verify each other's identity and are also aware of
+the other Agent's transport and synchronization capabilities.
 
 ### API-based HELLO Phase
 
 When using API-based communication the HELLO phase is done by sending
 a REST API POST request to the remote Agent at the "/hello"
 endpoint. The request MUST contain a JSON encoded object with the
-sender's identity and the zone that triggered the communication. The
-response MUST contain a JSON object with the responder's identity,
-establishing mutual identity between the two Agents.
+following fields:
+
+* "transport": The transport capabilities of the local Agent.
+* "synchronization": The synchronization capabilities of the local Agent.
+
+The response MUST contain a JSON object with the following fields:
+
+* "transport": The transport capabilities of the remote Agent.
+* "synchronization": The synchronization capabilities of the remote Agent.
 
 ### HELLO Failure Handling
 
@@ -1485,50 +1298,131 @@ SHOULD be notified when a remote Agent remains in "NEEDED" state
 beyond the configured retry budget so that the underlying
 connectivity or configuration problem can be addressed.
 
-### Choosing a Transport
+### Interpretation of the HELLO Responses
 
-An Agent learns which transports each other Agent supports during
-discovery, from which discovery chains resolve: a `_dns._tcp` chain
-ending in a JWK record indicates DNS transport, and a `_https._tcp`
-chain ending in a TLSA record indicates API transport. The transport
-used for a zone is then determined from this group-wide knowledge:
+Once an Agent has received HELLO responses from all other Agents that
+are designated signers for the zone, it knows the capabilities of the
+Agents as a group. It can then use this information to determine which
+transport to use:
 
-* If all Agents support API-based communication, the Agents use
+* If all Agents support API-based communication, the Agents will use
   API-based communication for this zone.
 
-* Otherwise, the Agents use DNS-based communication, which all Agents
-  MUST support.
+* If one or more Agents only support DNS-based communication, the
+  Agents will use DNS-based communication for this zone.
 
-The synchronization mechanisms themselves are not negotiated per
-zone: Peer-to-Peer synchronization is the baseline used by all
-Agents for the bulk of the coordination work, and leader-based
-synchronization is invoked only for tasks that require a single
-acting Agent (such as parent synchronization).
+Likewise, each Agent now knows the provider synchronization
+capabilities of the other Agents and can determine which
+synchronization model to use:
 
-## Defined Message Types {#defined-operations}
+* If all Agents support the Peer-to-Peer synchronization model, the
+  Agents will use the Peer-to-Peer synchronization model for this
+  zone.
 
-The MessageType field of the CHUNK EDNS(0) option identifies the type
-of message being sent. CHUNK message types are strings, and
-implementations may define additional message types as needed. The
-message types used by the Agent-to-Agent communication described in
-this document are listed below. The structured data payload for each
-message type is carried in the CHUNK EDNS(0) option
-({{I-D.berra-dnsop-chunk-transport}}).
+* If one or more Agents only support the Leader/Follower
+  synchronization model, the Agents will use the Leader/Follower
+  synchronization model for this zone.
 
-### HELLO
+## Provider-Synchronization EDNS(0) Option Format {#provsync-option}
 
-The HELLO message type is used during the initial handshake between
-two Agents that need to communicate for the first time. It carries
+This document uses an Extended Mechanism for DNS (EDNS0) {{!RFC6891}}
+option to include DNS Provider synchronization information in DNS
+messages.
+
+The Provider-Synchronization EDNS(0) option is structured as follows:
+
+~~~
+                                               1   1   1   1   1   1
+       0   1   2   3   4   5   6   7   8   9   0   1   2   3   4   5
+     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+ 0:  |                            OPTION-CODE                        |
+     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+ 2:  |                           OPTION-LENGTH                       |
+     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+ 4:  |           OPERATION           |           TRANSPORT           |
+     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+ 6:  |    SYNCHRONIZATION-MODEL      |                               /
+     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+ 7:  / OPERATION-BODY                                                /
+     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+~~~
+
+Field definition details:
+
+OPTION-CODE:
+    2 octets / 16 bits (defined in {{!RFC6891}}) contains the value TBD
+    for Provider-Synchronization.
+
+OPTION-LENGTH:
+    2 octets / 16 bits (defined in {{!RFC6891}}) contains
+    the length of the payload (everything after OPTION-LENGTH) in
+    octets and should be 3 plus the length of the OPERATION-BODY field
+    (which may be zero octets long).
+
+OPERATION:
+    8 bits. Signals the type of operation the message performs.
+    Defined values are listed in {{defined-operations}}.
+
+TRANSPORT:
+    8 bits. Encodes the transport capabilities of the Agent. With
+    8 bits it is possible to define up to 8 different transports of
+    which this document defines two: DNS and API.
+
+SYNCHRONIZATION-MODEL:
+    8 bits. Encodes the synchronization capabilities of the Agent.
+    With 8 bits it is possible to define up to 8 different
+    synchronization models of which this document identifies two:
+    Leader/Follower and Peer-to-Peer.
+
+OPERATION-BODY:
+    Variable-length. Used to carry operation-specific parameters.
+
+### Encoding Transport Capabilities in the Provider-Synchronization EDNS(0) Option
+
+An Agent signals the union of its transport capabilities by setting the
+corresponding bits to 1.
+
+0: DNS transport supported (baseline, MUST be supported by all Agents)
+
+1: API transport supported
+
+2-7: unused
+
+### Encoding Synchronization Capabilities in the Provider-Synchronization EDNS(0) Option
+
+An Agent signals its synchronization capabilities by setting the
+corresponding bits to 1.
+
+0: Leader/Follower multi-signer synchronization supported
+
+1: Peer-to-Peer multi-signer synchronization supported
+
+2-7: unused
+
+## Defined Operations {#defined-operations}
+
+The OPERATION field in the Provider-Synchronization EDNS(0) option
+identifies the type of message being exchanged. This document defines
+the following operations. The structured data payload for each
+operation is carried in the CHUNK EDNS(0) option
+({{I-D.berra-dnsop-chunk-transport}}) included in the same
+DNS message.
+
+### HELLO (1)
+
+The HELLO operation is used during the initial handshake between two
+Agents that need to communicate for the first time. The HELLO message
+is sent as a DNS NOTIFY with both the Provider-Synchronization option
+(OPERATION=HELLO) and a CHUNK option containing a JSON payload with
 the sender's identity and the zone that triggered the communication.
-The response carries the responder's identity, establishing mutual
-identity between the two Agents. Once both sides have exchanged HELLO
-messages successfully, they transition to the operational state. The
-HELLO exchange is described in more detail in
-{{the-initial-hello-phase}}.
 
-### BEAT
+The response includes a CHUNK option with the responder's identity
+and capabilities. Once both sides have exchanged HELLO messages
+successfully, they transition to the operational state.
 
-The BEAT message type (heartbeat) is used for periodic keep-alive
+### BEAT (2)
+
+The BEAT operation (heartbeat) is used for periodic keep-alive
 signaling between Agents that have established communication. The
 BEAT message carries the sender's identity, the list of zones shared
 between the two Agents, and the sender's intended heartbeat interval.
@@ -1537,43 +1431,43 @@ An Agent that does not receive a BEAT from a peer within a
 configurable timeout SHOULD consider the peer unreachable and MAY
 attempt to re-establish communication via the HELLO phase.
 
-### PING
+### PING (3)
 
-The PING message type is used to test connectivity with a remote
-Agent. The PING carries a random nonce that the responder echoes back
-in the response. This enables round-trip verification of the
-communication path.
+The PING operation is used to test connectivity with a remote Agent.
+The PING carries a random nonce that the responder echoes back in the
+response. This enables round-trip verification of the communication
+path.
 
-### SYNC
+### SYNC (4)
 
-The SYNC message type is used for Agent-to-Agent zone data
+The SYNC operation is used for Agent-to-Agent zone data
 synchronization. The CHUNK payload contains the zone data that the
 sending Agent contributes (DNSKEY, CDS, CSYNC, and optionally NS
 records). The receiving Agent processes the data according to its
 local policy and returns a confirmation indicating which records were
 accepted, removed, or rejected.
 
-### UPDATE
+### UPDATE (5)
 
-The UPDATE message type is used for Agent-to-Combiner zone data
+The UPDATE operation is used for Agent-to-Combiner zone data
 contributions. It carries the same payload format as SYNC, but the
 recipient is the local Combiner rather than a remote Agent. The
 Combiner returns an immediate "pending" acknowledgment and processes
 the update asynchronously, sending a detailed CONFIRM message once
 processing is complete.
 
-### CONFIRM
+### CONFIRM (6)
 
-The CONFIRM message type is used to send an explicit confirmation
+The CONFIRM operation is used to send an explicit confirmation
 message, typically as an asynchronous response to a previously
 received SYNC or UPDATE. The CHUNK payload contains the distribution
 ID of the original message, the processing status (success, partial,
 or error), and per-record detail of which records were accepted,
 removed, or rejected.
 
-### RFI
+### RFI (7)
 
-The RFI (Request For Information) message type is used to request
+The RFI (Request For Information) operation is used to request
 specific data from a remote Agent or Signer. The RFI message includes
 an RFI subtype indicating what information is being requested:
 
@@ -1584,9 +1478,9 @@ an RFI subtype indicating what information is being requested:
 
 The response contains the requested data in the CHUNK payload.
 
-### KEYSTATE
+### KEYSTATE (8)
 
-The KEYSTATE message type is used for DNSSEC key lifecycle signaling
+The KEYSTATE operation is used for DNSSEC key lifecycle signaling
 between an Agent and its Signer. The CHUNK payload includes the zone
 name, key tag, algorithm, and a signal indicating the key state
 transition:
@@ -1598,7 +1492,7 @@ transition:
 * Signals from Signer to Agent: "published" (new key created),
   "retired" (key retired), "inventory" (complete key inventory).
 
-The KEYSTATE message type enables coordinated key rollovers across
+The KEYSTATE operation enables coordinated key rollovers across
 multiple Providers.
 
 # Sequence Diagram Example of Establishing Secure Comms - "The Hello Phase"
@@ -1624,23 +1518,25 @@ The procedure is as follows:
    to be "KNOWN".
 
 3. Once an Agent has received the required information (URI, SVCB and
-   JWK records in the baseline case) it sends a HELLO message to the
-   remote Agent. The HELLO carries the sender's identity and the zone
-   that triggered the communication; the responder replies in the
-   same way, establishing mutual identity between the two Agents.
+   JWK records in the baseline case) it sends a NOTIFY message with a
+   dedicated Provider-Synchronization OPT code with OPERATION="HELLO".
+   The sender uses this OPT field to signal its transport and synchronization
+   capabilities. Similarly, the responder signals its capabilities
+   using the same field.
 
-4. When an Agent either receives a successful response to its HELLO
-   message or responds successfully to one, it transitions out of
-   "The Hello Phase" with the exchanging party and they transition to
-   the next phase where they start sending BEAT messages instead. The
-   communication with the remote Agent is now considered to be in the
-   "OPERATIONAL" state.
+4. When an Agent either gets a NOERROR response to its NOTIFY OPT(hello)
+   message or responds with a NOERROR, it transitions out of "The
+   Hello Phase" with the exchanging party and they transition to the
+   next phase where they start sending NOTIFY OPT(beat) signals
+   instead. The communication with the remote Agent is now considered to
+   be in the "OPERATIONAL" state.
 
 In the case where one Agent is aware of the need to communicate with
 another Agent, but the other is not (eg. the zone transfer was delayed
-for one of them), the slower one SHOULD reject any HELLO message it
-receives. Once it is ready, it will send its own HELLO message, which
-should then be accepted.
+for one of them), the slower one SHOULD respond with a RCODE=REFUSED
+to any NOTIFY OPT(hello) it receives. Once it is ready, it will send
+its own NOTIFY OPT(hello) which should be responded to with a
+RCODE=NOERROR.
 
 ~~~
 +----------+                 +----------+                        +----------+
@@ -1664,17 +1560,17 @@ should then be accepted.
      |                            |----------------------------------->|
      |                            |                                    |
      |                            |                                    |
-     |                            |  HELLO(example.com)                |
+     |                            |  NOTIFY example.com. OPT(hello)    |
      |                            |----------------------------------->|
-     |                            |  HELLO response                    |
+     |                            |  NOERROR example.com. OPT(hello)   |
      |                            |<-----------------------------------|
      |                            |                                    |
      |                            |                                    |
-     |                            |  BEAT                              |
+     |                            |  NOTIFY example.com. OPT(beat)     |
      |                            |----------------------------------->|
      |                            |                                    |
      |                            |                                    |
-     |                            |  BEAT                              |
+     |                            |  NOTIFY example.com. OPT(beat)     |
      |                            |<-----------------------------------|
      |                            |                                    |
      |                            |                                    |
@@ -1701,7 +1597,9 @@ data for a zone, each Agent must ensure that the DNS records needed for
 secure communication with other Agents are published:
 
   * URI, SVCB and JWK records required for DNS-based communication
-    using CHUNK framing (see {{I-D.berra-dnsop-chunk-transport}}).
+    with CHUNK transport (see {{I-D.berra-dnsop-chunk-transport}}).
+    For backward compatibility, KEY records for SIG(0) MAY also be
+    published.
 
   * URI, SVCB and TLSA records required for API-based communication
     secured by TLS (if supported).
@@ -1711,15 +1609,21 @@ secure communication with other Agents are published:
 
 ## Exchanging Zone Data Between Agents
 
-Agents exchange synchronization messages — HELLO, BEAT, SYNC, and
-the other message types defined in {{defined-operations}} — over
-either DNS- or API-transport. The messages themselves are the same in
-both cases; in the DNS case they are encapsulated in CHUNKs, the
-framing mechanism defined in {{I-D.berra-dnsop-chunk-transport}},
-whereas API-transport carries the JSON-serialized messages directly.
+When using DNS transport between Agents, the following types of
+information need to be conveyed between parties:
 
-The zone data that each Agent contributes to the other Agents for a
-zone consists of:
+1. Notifications and structured data (sent as DNS NOTIFY carrying a
+   CHUNK EDNS(0) option, as defined in
+   {{I-D.berra-dnsop-chunk-transport}}).
+
+2. Provider synchronization state (sent via the
+   Provider-Synchronization EDNS(0) Option).
+
+3. Confirmations and responses (sent as DNS NOTIFY carrying a CHUNK
+   EDNS(0) option in the response or as a separate NOTIFY).
+
+The data that each Agent contributes for synchronization with other
+Agents includes:
 
   * The DNSKEY RRset for the zone consisting of the DNSKEYs that the
     local Signer for this DNS Provider uses to sign the zone.
@@ -1733,10 +1637,11 @@ zone consists of:
     authoritative nameservers that this DNS Provider is responsible
     for (when NS management is delegated to the Agents).
 
-Each Agent sends its zone data contributions to all other Agents for
-the zone using the SYNC message type (see {{defined-operations}}).
-The receiving Agent is responsible for instructing its local Combiner
-to incorporate the received data.
+This data is exchanged between Agents via CHUNK NOTIFY messages
+(see {{defined-operations}}). Each Agent sends its zone data
+contributions to all other Agents for the zone. The receiving Agent
+is responsible for instructing its local Combiner to incorporate
+the received data.
 
 # Migration from Single-Signer to Multi-Signer
 
@@ -1854,7 +1759,7 @@ automation. However, automation is a double-edged sword. It can both
 make the system more robust and more vulnerable.
 
 While all communication between Agents is authenticated (either via
-JWS signatures or TLS), the signalling from the zone owner to the
+SIG(0) signatures or TLS), the signalling from the zone owner to the
 Agents is via the HSYNC3 RRset and the HSYNCPARAM record in an
 unsigned zone. This is a potential attack vector. However, securing
 zone transfers from zone owner to DNS Providers is a well-known
@@ -1957,6 +1862,45 @@ range are to be made through Specification Required review
 | 32768-65534 | Private Use |                                             | (This document)   |
 | 65535       | Reserved    | MUST NOT be assigned                        | (This document)   |
 
+## New Provider-Synchronization EDNS Option
+
+This document defines a new EDNS(0) option, entitled "Provider-Synchronization",
+assigned a value of TBD in the "DNS EDNS0 Option Codes (OPT)" registry
+
+TO BE REMOVED UPON PUBLICATION:
+[https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-11](foo)
+
+~~~
+   +-------+--------------------------+----------+----------------------+
+   | Value | Name                     | Status   | Reference            |
+   +-------+--------------------------+----------+----------------------+
+   | TBD   | Provider-Synchronization | Standard | ( This document )    |
+   +-------+--------------------------+----------+----------------------+
+~~~
+
+## A New Registry for EDNS Option Provider-Synchronization Operation Codes {#provsync-registry}
+
+The Provider-Synchronization option also defines an 8-bit operation field, for
+which IANA is requested to create and maintain a new registry entitled
+"Provider-Synchronization Operations", used by the Provider-Synchronization
+option. Initial values for the "Provider-Synchronization Operations" registry
+are given below; future assignments in the 9-127 range are to be made through
+Specification Required review {{?BCP26}}.
+
+| OPERATION | Mnemonic   | Description                        | Reference         |
+|-----------|------------|------------------------------------|-------------------|
+| 0         | FORBIDDEN  | Reserved, MUST NOT be used         | (This document)   |
+| 1         | HELLO      | Initial handshake                  | (This document)   |
+| 2         | BEAT       | Heartbeat / keep-alive             | (This document)   |
+| 3         | PING       | Connectivity test with nonce       | (This document)   |
+| 4         | SYNC       | Agent-to-Agent zone data sync      | (This document)   |
+| 5         | UPDATE     | Agent-to-Combiner zone contribution| (This document)   |
+| 6         | CONFIRM    | Asynchronous confirmation          | (This document)   |
+| 7         | RFI        | Request For Information            | (This document)   |
+| 8         | KEYSTATE   | DNSSEC key lifecycle signaling     | (This document)   |
+| 9-127     | Unassigned |                                    | (This document)   |
+| 128-255   | Private Use|                                    | (This document)   |
+
 --- back
 
 # Change History (to be removed before publication)
@@ -1970,43 +1914,41 @@ range are to be made through Specification Required review
 > pubcds. Added an IANA registry for HSYNCPARAM Keys. Removed the
 > obsolete Sign field; signing intent is now expressed by
 > inclusion in the HSYNCPARAM signers key. Added a "Linking
-> HSYNC3 and HSYNCPARAM" section explaining the Label indirection.
-> Rewrote scenarios, examples, and the migration chapter accordingly.
+> HSYNC3 and HSYNCPARAM" section explaining the Label
+> indirection. Rewrote scenarios, examples, and migration
+> chapter accordingly.
 
-> Introduced the Auditor and Signer roles in Terminology (the
-> document now defines five roles) and added a full "The Auditor"
-> section. Promoted the Combiner to the architecture description.
+> Agent-to-agent data exchange now uses the CHUNK transport mechanism
+> defined in {{I-D.berra-dnsop-chunk-transport}} instead of the
+> per-provider subdomain publication scheme ({zone}.{identity}).
+> Removed the "Enabling Remote Agents to Lookup Zone Data Added By This
+> Agent" section and replaced it with "Exchanging Zone Data Between
+> Agents" describing the CHUNK-based approach.
 
-> Re-scoped the document to focus on the architecture: the problem
-> statement, the HSYNC3/HSYNCPARAM signaling, the provider model
-> (Combiner, Signer, Agent), and the synchronization framework. The
-> detailed agent-to-agent wire mechanics are deferred to
-> {{I-D.berra-dnsop-chunk-transport}}.
+> Agent discovery for DNS transport now looks up JWK records (preferred)
+> with fallback to KEY records (legacy). JWK records enable both JWS
+> signature verification and HPKE encryption. Updated the discovery
+> examples accordingly.
 
-> Agent-to-agent communication is carried over two transports, DNS
-> and API. CHUNK is the DNS-side framing that lets structured data
-> travel over DNS (REST carries JSON directly). An Agent signals which
-> transports it supports by publishing the corresponding discovery
-> records: a _dns._tcp URI chain ending in a JWK record for DNS
-> transport, and a _https._tcp URI chain ending in a TLSA record for
-> API transport.
+> Added six new Provider-Synchronization operation codes: PING (3),
+> SYNC (4), UPDATE (5), CONFIRM (6), RFI (7), and KEYSTATE (8).
+> Renamed HEARTBEAT (2) to BEAT (2). Added a "Defined Operations"
+> section describing each operation.
 
-> The HELLO exchange establishes mutual identity only (sender identity
-> and the triggering zone); it no longer carries capability signaling.
-> Agent messages (HELLO, BEAT, SYNC, etc.) are described as message
-> types rather than as fields of a dedicated EDNS option.
+> Fixed wire format diagram for Provider-Synchronization EDNS(0) option:
+> corrected byte offsets (3 octets of fixed fields, not 4).
 
-> Agent authentication uses JWS signatures (DNS transport) or TLS
-> (API transport), with keys discovered from JWK records; optional
-> payload confidentiality uses JWE. SIG(0) is no longer used for
-> agent-to-agent authentication. (The child SIG(0) KEY publication
-> for the delegation-mgmt-via-ddns bootstrap, via the HSYNCPARAM
-> pubkey key, is a separate use and is retained.)
+> Updated "Agent Communication via DNS" to describe CHUNK transport with
+> optional JWS/HPKE security layer.
 
-> Replaced hardcoded section references with kramdown anchors and
-> corrected the inter-draft citation anchors. Editorial fixes
-> throughout (typos, duplicate words, "Provider" capitalization,
-> sequence-diagram alignment).
+> Replaced hardcoded section references with kramdown anchors.
+
+> Fixed the HSYNC Sign field example from "YES" to "SIGN" for
+> consistency with the field definition.
+
+> Editorial fixes: typos (examplified, aquiring, phaste, eith,
+> responsibilites), duplicate words (a a, as as, for for, the these),
+> missing possessives, missing parenthesis.
 
 * draft-leon-dnsop-signaling-zone-owner-intent-00
 
