@@ -193,16 +193,18 @@ Agent:
    {{the-agent-integrated-signer-vs-separate-agent}}.
 
 Combiner:
-:  A component (typically deployed per signing Provider) that
-   merges unsigned zone data received from the zone owner with
-   apex RRsets (DNSKEY, CDS, CSYNC, and possibly NS) coordinated
-   among the Agents, and feeds the merged unsigned zone to the
+:  A component (deployed per Provider) that persists the contributions
+   coordinated among the Agents and merges the role-permitted apex
+   RRsets (DNSKEY, CDS, CSYNC, and possibly NS) with the unsigned zone
+   data received from the zone owner, feeding the merged zone to the
    local Signer. See {{the-combiner}}.
 
 Signer:
-:  The component (typically deployed per signing Provider) that
-   performs DNSSEC signing. It receives the merged unsigned zone
-   from the local Combiner and produces the signed zone. The
+:  The component (deployed per Provider) that performs DNSSEC
+   signing. It receives the merged zone from the local Combiner and
+   produces the served zone. For an unsigned zone the Signer makes no
+   changes but remains in the path as the upstream for the Provider's
+   public secondaries. The
    Signer is deliberately kept unaware of the multi-provider
    coordination; that complexity is handled by the Combiner and
    the Agent. See {{authoritative-source-per-data-class}}.
@@ -500,6 +502,22 @@ between the zone owner, the Combiner, the Signer and the Agent:
              +-----+                                              +---+
 ~~~
 
+In the reference architecture every Provider deploys all three
+components — Combiner, Signer, and Agent — and every zone the
+Provider serves flows through the same path: from the upstream zone
+owner to the Combiner, then to the Signer, then to the Agent and on
+to the Provider's public secondary nameservers. A Provider typically
+serves a large number of zones, some signed and some not, and a zone
+may change between unsigned and signed over its lifetime (for
+example when the zone owner requests signing via HSYNCPARAM). Rather
+than maintain a different zone-transfer path per zone, all zones use
+this one path. For an unsigned zone the Signer makes no
+modifications — it is effectively a pass-through — but it remains in
+the path, continuing to serve as the dependable upstream for the
+Provider's public secondaries. Signing status therefore changes what
+the components *do* for a given zone, not which components are
+present or how zone data flows between them.
+
 ## The DNS Provider
 
 A "DNS Provider" is a term that is most commonly used to refer to an
@@ -511,15 +529,19 @@ entity that provides some subset of the following services:
  * Serving the zone via a set of authoritative nameservers.
  * Distributing the signed zone to other downstream DNS Providers.
 
-In addition to the above services a DNS Provider MUST also provide:
+In addition to the above services, a DNS Provider in the reference
+architecture provides all three of the internal components:
 
-* An Agent for synchronization with other DNS Providers
-* A Combiner for the management of changes to the zone via
-  the synchronization among Agents (if it provides a signer)
+* A Combiner that persists Agent contributions and merges the
+  role-permitted changes into the zone;
+* a Signer that performs DNSSEC signing (a no-op for unsigned zones,
+  see {{the-combiner}}); and
+* an Agent for synchronization with the other Providers' Agents.
 
-I.e. in the setup above there are two DNS Providers, both of which are
-"complete" in the sense that they provide all three of the above
-services.
+Whether a Provider actually signs a given zone, and which of the
+coordinated RRsets it applies, depends on its role for that zone
+(expressed via HSYNCPARAM) — not on which components it deploys.
+Every Provider provides all three internal components.
 
 ## The Auditor
 
@@ -981,12 +1003,189 @@ In this example, both "fox" and "hare" serve the zone (both are in
 
 # Distributed Synchronization of DNS Data
 
-TODO: describe our current understanding of the synchronization
-problem here (the synchronization model, what data must be kept in
-sync, the eventual-consistency / safety-over-liveness properties,
-and a high-level sketch of the leader/follower vs peer-to-peer
-algorithm families, with the concrete algorithms deferred to
-{{?I-D.ietf-dnsop-dnssec-automation}}).
+When a zone is served (and possibly signed) by more than one
+Provider, a small set of apex RRsets must be kept consistent across
+all of them: the DNSKEY RRset (the union of every signer's keys),
+the CDS and CSYNC RRsets used to drive parent synchronization, and,
+when NS management is delegated, the NS RRset. Each Provider
+contributes its own part of these RRsets, and every Provider must
+converge on the same combined result.
+
+## The Synchronization Problem
+
+The difficulty is that the contributions arrive independently and
+asynchronously. Each Provider's Agent contributes when its local
+state changes — a new DNSKEY is published, a nameserver is added or
+removed — and those contributions reach the other Agents at
+different times, over a communication mesh that may be partitioned
+or delayed. There is no global lock and no single component that
+owns the combined result (see {{authoritative-source-per-data-class}}).
+
+The synchronization model is therefore one of eventual consistency:
+given a stable set of contributions, all Providers converge on the
+same combined RRsets, but they do not do so atomically. Two
+properties bound this convergence:
+
+* Safety over liveness. At every point during synchronization the
+  zone remains available and correctly signed under the data each
+  Provider already holds. If a contribution is delayed or an Agent
+  is unreachable, synchronization pauses rather than producing an
+  inconsistent or unsigned zone; it resumes from where it stopped
+  once the missing input arrives. A multi-signer key rollover
+  illustrates this: when one signing Provider introduces a new key,
+  that key is not relied upon for the zone until every signing
+  Provider has confirmed it has published the new key in the joint
+  DNSKEY RRset. If one signer is slow or temporarily unreachable,
+  the rollover does not fail — it simply pauses until that signer
+  catches up, and the zone stays valid under the keys already in
+  effect throughout.
+
+* Role asymmetry. The Providers do not all play the same role for a
+  zone. A non-signing Provider still participates in coordination
+  (for example, contributing NS records when NS management is
+  delegated), but it must not act on contributions that only a
+  signer may apply. What a Provider does with a contribution depends
+  on its role, expressed by the zone owner through the HSYNCPARAM
+  keys defined in this document.
+
+A second consequence of role asymmetry is that not every Provider
+ends up serving identical zone content: the coordinated RRsets are
+the same everywhere, but, for example, a Provider's served zone
+reflects only the NS management policy in force. The model below
+makes this precise.
+
+## Persisting All, Applying by Role
+
+The Combiner ({{the-combiner}}) at each Provider receives
+contributions from the Agents and merges the role-permitted ones
+with the owner's zone data, passing the merged zone to the local
+Signer. Conceptually the Combiner maintains three derived views:
+
+* the per-Agent contributions, one set per contributing Agent,
+  retained as received;
+
+* a merged view, deduplicating the per-Agent contributions for the
+  same owner name and RRtype into a single combined RRset; and
+
+* the live zone served to queries, produced by applying the merged
+  view to the owner's zone data.
+
+The central rule that makes distributed synchronization well-defined
+is the separation of these two actions:
+
+> Every Combiner persists all contributions received from
+> authorized Agents; each Combiner applies to its live zone only
+> those contributions that its role permits.
+
+Persistence is unconditional: a contribution from an authorized
+Agent is always retained, regardless of the receiving Provider's
+role. Application is conditional on role. A non-signing Provider's
+Combiner therefore holds the same set of contributions as a signing
+Provider's Combiner; the two differ only in what reaches the served
+zone. Retaining the full contribution set at every Provider is what
+allows a Provider's role to change — or a new signer to be
+onboarded — without first having to re-gather data that some
+Provider had previously discarded.
+
+In this architecture the Combiner, not the Agent, is the component
+responsible for durably persisting contributions, for two reasons:
+
+* The Combiner must hold the complete set of contributions so that
+  it can re-apply the role-permitted changes to every new version of
+  the unsigned zone it receives from the zone owner. Each inbound
+  zone transfer from the owner replaces the owner-supplied content,
+  and the coordinated RRsets must be merged in again; the Combiner
+  can only do this if it retains the contributions independently of
+  any single zone version.
+
+* Keeping the persistent state in the Combiner lets the Agent be
+  restartable at any time. The Agent holds no durable contribution
+  state of its own; when an Agent restarts, it resynchronizes by
+  requesting the current set of contributions from its Combiner, on
+  a per-zone basis, and resumes from there. This keeps the Agent
+  close to stateless and avoids a separate recovery mechanism in the
+  Agent.
+
+## Role-Derived Edit Policy
+
+Whether a Combiner applies a given contribution to its live zone is
+determined by four conditions, all derived from the zone's
+HSYNCPARAM record and the Combiner's own role:
+
+* whether the zone is signed;
+* whether this Provider is a signer (its Label appears in the
+  {{signers}} key);
+* whether NS management is delegated to the Agents ({{nsmgmt}} is
+  "agent"); and
+* whether parent synchronization is delegated to the Agents
+  ({{parentsync}} is "agent").
+
+Each coordinated RRset is applied only when the corresponding
+conditions hold. A Combiner MUST apply a received contribution to
+its live zone only when the condition in the following table is
+satisfied for that RRset, and MUST otherwise retain the contribution
+without applying it:
+
+| RRset  | Applied to the live zone when                          |
+|--------|--------------------------------------------------------|
+| NS     | nsmgmt=agent AND (zone unsigned OR we are a signer)     |
+| DNSKEY | zone signed AND we are a signer                        |
+| CDS    | zone signed AND we are a signer AND parentsync=agent   |
+| CSYNC  | zone signed AND we are a signer AND parentsync=agent   |
+| KEY    | parentsync=agent AND (zone unsigned OR we are a signer) |
+
+The KEY RRset in this table is the SIG(0) public key used for parent
+synchronization via DNS UPDATE; it is unrelated to the JWK-based
+keys used for Agent-to-Agent authentication. DNSKEY is meaningful
+only for signed zones, while NS and KEY may be applied by any
+Provider's Combiner for an unsigned zone, gated only by the
+nsmgmt and parentsync policies respectively.
+
+## Reporting Whether a Contribution Was Applied
+
+Because a contribution may be persisted by a Combiner without being
+applied, the Agent that originated it needs to learn which of the
+two happened. A Combiner reports one of three outcomes for each
+contributed RRset:
+
+* applied — the contribution was persisted and reached the live
+  zone;
+
+* persisted-not-applied — the contribution was persisted but the
+  role-derived edit policy did not permit applying it (the running
+  implementation labels this status IGNORED). This is a definitive
+  outcome: it is not an error, and the originating Agent SHOULD NOT
+  retry; the data is safely held; and
+
+* rejected — the contribution was not accepted at all, for example
+  because the contributing Agent is not authorized to contribute zone
+  data. This is the expected outcome for any contribution originating
+  from an Auditor ({{the-auditor}}), which participates in the
+  synchronization but MUST NOT contribute zone data.
+
+Both "applied" and "persisted-not-applied" are definitive answers
+that allow the originating Agent to stop tracking the contribution
+as outstanding. When an Agent has sent a contribution to several
+recipients, the contribution is considered applied for the zone if
+ANY recipient reports "applied"; it is considered persisted-not-
+applied only if ALL recipients report "persisted-not-applied". This
+lets the originating Agent answer the operationally important
+question: did any Provider actually apply my data? A contribution
+that every recipient persists but none applies (for example, an NS
+contribution to a zone whose owner retains NS management) is
+correctly reported as applied nowhere, without being treated as a
+failure.
+
+## Scope
+
+This section defines the synchronization model and the invariants
+that every implementation must share: what data is kept in sync, the
+persist-all / apply-by-role rule, the role-derived edit policy, and
+the contribution-reporting semantics. The concrete multi-step
+synchronization processes built on this model — adding or removing a
+signer, coordinated key rollovers, NS RRset reconciliation, and
+parent synchronization — are out of scope for this document and are
+specified separately (see {{?I-D.ietf-dnsop-dnssec-automation}}).
 
 # Communication Between Agents
 
@@ -1771,41 +1970,43 @@ range are to be made through Specification Required review
 > pubcds. Added an IANA registry for HSYNCPARAM Keys. Removed the
 > obsolete Sign field; signing intent is now expressed by
 > inclusion in the HSYNCPARAM signers key. Added a "Linking
-> HSYNC3 and HSYNCPARAM" section explaining the Label
-> indirection. Rewrote scenarios, examples, and migration
-> chapter accordingly.
+> HSYNC3 and HSYNCPARAM" section explaining the Label indirection.
+> Rewrote scenarios, examples, and the migration chapter accordingly.
 
-> Agent-to-agent data exchange now uses the CHUNK transport mechanism
-> defined in {{I-D.berra-dnsop-chunk-transport}} instead of the
-> per-provider subdomain publication scheme ({zone}.{identity}).
-> Removed the "Enabling Remote Agents to Lookup Zone Data Added By This
-> Agent" section and replaced it with "Exchanging Zone Data Between
-> Agents" describing the CHUNK-based approach.
+> Introduced the Auditor and Signer roles in Terminology (the
+> document now defines five roles) and added a full "The Auditor"
+> section. Promoted the Combiner to the architecture description.
 
-> Agent discovery for DNS transport now looks up JWK records (preferred)
-> with fallback to KEY records (legacy). JWK records enable both JWS
-> signature verification and HPKE encryption. Updated the discovery
-> examples accordingly.
+> Re-scoped the document to focus on the architecture: the problem
+> statement, the HSYNC3/HSYNCPARAM signaling, the provider model
+> (Combiner, Signer, Agent), and the synchronization framework. The
+> detailed agent-to-agent wire mechanics are deferred to
+> {{I-D.berra-dnsop-chunk-transport}}.
 
-> Added six new Provider-Synchronization operation codes: PING (3),
-> SYNC (4), UPDATE (5), CONFIRM (6), RFI (7), and KEYSTATE (8).
-> Renamed HEARTBEAT (2) to BEAT (2). Added a "Defined Operations"
-> section describing each operation.
+> Agent-to-agent communication is carried over two transports, DNS
+> and API. CHUNK is the DNS-side framing that lets structured data
+> travel over DNS (REST carries JSON directly). An Agent signals which
+> transports it supports by publishing the corresponding discovery
+> records: a _dns._tcp URI chain ending in a JWK record for DNS
+> transport, and a _https._tcp URI chain ending in a TLSA record for
+> API transport.
 
-> Fixed wire format diagram for Provider-Synchronization EDNS(0) option:
-> corrected byte offsets (3 octets of fixed fields, not 4).
+> The HELLO exchange establishes mutual identity only (sender identity
+> and the triggering zone); it no longer carries capability signaling.
+> Agent messages (HELLO, BEAT, SYNC, etc.) are described as message
+> types rather than as fields of a dedicated EDNS option.
 
-> Updated "Agent Communication via DNS" to describe CHUNK transport with
-> optional JWS/HPKE security layer.
+> Agent authentication uses JWS signatures (DNS transport) or TLS
+> (API transport), with keys discovered from JWK records; optional
+> payload confidentiality uses JWE. SIG(0) is no longer used for
+> agent-to-agent authentication. (The child SIG(0) KEY publication
+> for the delegation-mgmt-via-ddns bootstrap, via the HSYNCPARAM
+> pubkey key, is a separate use and is retained.)
 
-> Replaced hardcoded section references with kramdown anchors.
-
-> Fixed the HSYNC Sign field example from "YES" to "SIGN" for
-> consistency with the field definition.
-
-> Editorial fixes: typos (examplified, aquiring, phaste, eith,
-> responsibilites), duplicate words (a a, as as, for for, the these),
-> missing possessives, missing parenthesis.
+> Replaced hardcoded section references with kramdown anchors and
+> corrected the inter-draft citation anchors. Editorial fixes
+> throughout (typos, duplicate words, "Provider" capitalization,
+> sequence-diagram alignment).
 
 * draft-leon-dnsop-signaling-zone-owner-intent-00
 
