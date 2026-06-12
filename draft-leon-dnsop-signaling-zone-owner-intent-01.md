@@ -739,7 +739,7 @@ themselves as authoritative for the zone.
 The Labels used in HSYNCPARAM list keys are unqualified tokens, not
 fully qualified domain names. They are short handles defined by
 the HSYNC records in the same zone; the FQDN of each Provider's
-Agent is given by the HSYNC Identity field. See {{the-hsync3-rrset}}
+Agent is given by the HSYNC Identity field. See {{the-hsync-rrset}}
 for the HSYNC record format.
 
 Example:
@@ -921,7 +921,7 @@ Example:
 zone.example. IN HSYNCPARAM signers="fox,hare" pubkey pubcds
 
 
-# Linking HSYNC and HSYNCPARAM {#linking-hsync3-and-hsyncparam}
+# Linking HSYNC and HSYNCPARAM {#linking-hsync-and-hsyncparam}
 
 HSYNC and HSYNCPARAM are designed to work together: HSYNC names
 the Providers (one record each), and HSYNCPARAM expresses
