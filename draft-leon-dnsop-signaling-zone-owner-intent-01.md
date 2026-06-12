@@ -47,9 +47,9 @@ informative:
 
 This document introduces a standardized mechanism for zone owners to
 signal their intent regarding DNS provider responsibilities through
-DNS itself. It defines two new DNS RRtypes — HSYNC (Horizontal
+DNS itself. It defines two new DNS RRtypes -- HSYNC (Horizontal
 Synchronization, per-provider enrollment) and HSYNCPARAM
-(zone-wide multi-provider policy) — that together enable zone
+(zone-wide multi-provider policy) -- that together enable zone
 owners to designate which Providers are authorized to serve and/or
 sign their zones, control whether Providers or the zone owner
 manages the NS RRset, and specify zone transfer chain
@@ -251,7 +251,7 @@ scenarios illustrate the range of use cases this mechanism enables:
 
 ## Coordinated NS Record Management
 
-A zone owner uses two DNS Providers — one signs and serves the
+A zone owner uses two DNS Providers -- one signs and serves the
 zone while another only serves it. The zone owner publishes one
 HSYNC record per Provider and an HSYNCPARAM record whose
 {{servers}} key lists both Providers and whose {{signers}} key
@@ -488,7 +488,7 @@ between the zone owner, the Combiner, the Signer and the Agent:
 ~~~
 
 In the reference architecture every Provider deploys all three
-components — Combiner, Signer, and Agent — and every zone the
+components -- Combiner, Signer, and Agent -- and every zone the
 Provider serves flows through the same path: from the upstream zone
 owner to the Combiner, then to the Signer, then to the Agent and on
 to the Provider's public secondary nameservers. A Provider typically
@@ -497,7 +497,7 @@ may change between unsigned and signed over its lifetime (for
 example when the zone owner requests signing via HSYNCPARAM). Rather
 than maintain a different zone-transfer path per zone, all zones use
 this one path. For an unsigned zone the Signer makes no
-modifications — it is effectively a pass-through — but it remains in
+modifications -- it is effectively a pass-through -- but it remains in
 the path, continuing to serve as the dependable upstream for the
 Provider's public secondaries. Signing status therefore changes what
 the components *do* for a given zone, not which components are
@@ -525,7 +525,7 @@ architecture provides all three of the internal components:
 
 Whether a Provider actually signs a given zone, and which of the
 coordinated RRsets it applies, depends on its role for that zone
-(expressed via HSYNCPARAM) — not on which components it deploys.
+(expressed via HSYNCPARAM) -- not on which components it deploys.
 Every Provider provides all three internal components.
 
 ## The Auditor
@@ -783,11 +783,11 @@ Type: value, one of "owner" or "agent".
 The `nsmgmt` key signals who is responsible for the contents of the
 NS RRset for the zone. Two values are defined:
 
-* "owner" — the zone owner is responsible for the NS RRset.
+* "owner" -- the zone owner is responsible for the NS RRset.
   Agents MUST NOT instruct their local Combiner to update the NS
   RRset.
 
-* "agent" — the Providers' Agents collectively are responsible for
+* "agent" -- the Providers' Agents collectively are responsible for
   the NS RRset. Agents whose Provider is listed in {{signers}}
   MUST instruct their local Combiner to update the NS RRset based
   on the union of NS records contributed by Providers via
@@ -799,7 +799,7 @@ In-bailiwick address records (A/AAAA records for nameservers whose
 name lies within the zone) are deliberately not covered by
 `nsmgmt`. The reasons are to limit the possibility of DNS
 Providers polluting the zone's namespace, and to keep the
-specification simpler — the concept of delegated NS management is
+specification simpler -- the concept of delegated NS management is
 already new. See {{suffix}} for the separate signaling that lets
 Providers add their own nameserver names and addresses, scoped
 under a label designated by the zone owner.
@@ -818,11 +818,11 @@ The `parentsync` key signals who is responsible for synchronizing
 delegation information (NS, glue, DS) with the parent zone. Two
 values are defined:
 
-* "owner" — the zone owner is responsible for sending updates to
+* "owner" -- the zone owner is responsible for sending updates to
   the parent (via whichever mechanism the parent announces in its
   DSYNC record).
 
-* "agent" — the Providers' Agents collectively are responsible
+* "agent" -- the Providers' Agents collectively are responsible
   for parent synchronization; this is typically coordinated via
   leader election among the Agents.
 
@@ -843,7 +843,7 @@ Type: value, a single valid DNS label.
 
 When the `suffix` key is present, DNS Providers MAY add
 in-bailiwick address records to the zone for nameservers they
-contribute — but only for names below `{suffix}.{zone}`. The value
+contribute -- but only for names below `{suffix}.{zone}`. The value
 of the key MUST be a single valid DNS label (not a fully qualified
 domain name).
 
@@ -877,7 +877,7 @@ Keys `pubkey` and `pubcds` (see {{pubcds}}) instruct DNS Providers
 to publish KEY and CDS/CDNSKEY records on behalf of the zone
 owner at well-known names. Without these signals, Providers would
 have to scan customer zones for various conventional content (per
-{{!RFC9615}} §3.1 for CDS, and similar conventions for other RR
+{{!RFC9615}} Section 3.1 for CDS, and similar conventions for other RR
 types). The HSYNCPARAM record provides a single,
 designed-for-purpose place where the zone owner expresses such
 intent, making the signaling explicit rather than implicit in zone
@@ -910,7 +910,7 @@ the special name `_dsboot.{child}._signal.{their-ns-name}.` in
 their own zone, per the DNSSEC bootstrap mechanism defined in
 {{!RFC9615}}.
 
-This signal replaces the implicit RFC 9615 §3.1 convention by
+This signal replaces the implicit RFC 9615 Section 3.1 convention by
 which Providers would otherwise scan customer zones for CDS or
 CDNSKEY content. Under `pubcds` the zone owner's intent is
 explicit; under absence of `pubcds`, Providers MUST NOT publish
@@ -982,8 +982,8 @@ converge on the same combined result.
 
 The difficulty is that the contributions arrive independently and
 asynchronously. Each Provider's Agent contributes when its local
-state changes — a new DNSKEY is published, a nameserver is added or
-removed — and those contributions reach the other Agents at
+state changes -- a new DNSKEY is published, a nameserver is added or
+removed -- and those contributions reach the other Agents at
 different times, over a communication mesh that may be partitioned
 or delayed. There is no global lock and no single component that
 owns the combined result (see {{authoritative-source-per-data-class}}).
@@ -1003,7 +1003,7 @@ properties bound this convergence:
   that key is not relied upon for the zone until every signing
   Provider has confirmed it has published the new key in the joint
   DNSKEY RRset. If one signer is slow or temporarily unreachable,
-  the rollover does not fail — it simply pauses until that signer
+  the rollover does not fail -- it simply pauses until that signer
   catches up, and the zone stays valid under the keys already in
   effect throughout.
 
@@ -1050,8 +1050,8 @@ role. Application is conditional on role. A non-signing Provider's
 Combiner therefore holds the same set of contributions as a signing
 Provider's Combiner; the two differ only in what reaches the served
 zone. Retaining the full contribution set at every Provider is what
-allows a Provider's role to change — or a new signer to be
-onboarded — without first having to re-gather data that some
+allows a Provider's role to change -- or a new signer to be
+onboarded -- without first having to re-gather data that some
 Provider had previously discarded.
 
 In this architecture the Combiner, not the Agent, is the component
@@ -1115,16 +1115,16 @@ applied, the Agent that originated it needs to learn which of the
 two happened. A Combiner reports one of three outcomes for each
 contributed RRset:
 
-* applied — the contribution was persisted and reached the live
+* applied -- the contribution was persisted and reached the live
   zone;
 
-* persisted-not-applied — the contribution was persisted but the
+* persisted-not-applied -- the contribution was persisted but the
   role-derived edit policy did not permit applying it (the running
   implementation labels this status IGNORED). This is a definitive
   outcome: it is not an error, and the originating Agent SHOULD NOT
   retry; the data is safely held; and
 
-* rejected — the contribution was not accepted at all, for example
+* rejected -- the contribution was not accepted at all, for example
   because the contributing Agent is not authorized to contribute zone
   data. This is the expected outcome for any contribution originating
   from an Auditor ({{the-auditor}}), which participates in the
@@ -1149,9 +1149,9 @@ This section defines the synchronization model and the invariants
 that every implementation must share: what data is kept in sync, the
 persist-all / apply-by-role rule, the role-derived edit policy, and
 the contribution-reporting semantics. The concrete multi-step
-synchronization processes built on this model — adding or removing a
+synchronization processes built on this model -- adding or removing a
 signer, coordinated key rollovers, NS RRset reconciliation, and
-parent synchronization — are out of scope for this document and are
+parent synchronization -- are out of scope for this document and are
 specified separately (see {{?I-D.ietf-dnsop-dnssec-automation}}).
 
 # Communication Between Agents
@@ -1182,8 +1182,8 @@ different tasks rather than chosen as alternatives:
   reconciliation among the Agents).
 
 * **Leader-based** synchronization is used only for tasks that require
-  a single Agent to act on behalf of the group — most notably
-  synchronization with the parent zone — where the acting Agent is
+  a single Agent to act on behalf of the group -- most notably
+  synchronization with the parent zone -- where the acting Agent is
   chosen by leader election.
 
 Both mechanisms run over either DNS or API transport.
@@ -1201,8 +1201,8 @@ other Providers to locate its Agent MUST be DNSSEC-signed.
 
 ## Agent Communication via DNS
 
-Structured data — zone contributions, key state signals,
-synchronization state, and confirmations — cannot be sent over DNS
+Structured data -- zone contributions, key state signals,
+synchronization state, and confirmations -- cannot be sent over DNS
 as-is, since DNS carries only resource records or opaque option data.
 The CHUNK framing mechanism defined in
 {{?I-D.berra-dnsop-chunk-framing}} encodes such structured data for
@@ -1251,9 +1251,9 @@ supports by publishing the corresponding discovery records in the
 DNS; this record publication is what replaced the in-band transport
 signaling of earlier designs.
 
-Each transport is discovered through the same three-step shape — a
+Each transport is discovered through the same three-step shape -- a
 URI record at the HSYNC Identity, the SVCB record of the URI target,
-and a final record at that target — but the two flows are independent,
+and a final record at that target -- but the two flows are independent,
 starting from different service-prefixed URI names and ending in
 different records: `_dns._tcp` ending in a JWK record for DNS
 transport, and `_https._tcp` ending in a TLSA record for API
@@ -1289,14 +1289,14 @@ zone.example. IN HSYNC  remote  agent.provider.com. .
 The local Agent will look up the URI record for agent.provider.com:
 
 _dns._tcp.agent.provider.com.  IN  URI  10 10 "dns://dns.agent.provider.com:5399/"
-_dns._tcp.agent.provider.com.  IN  RRSIG URI …
+_dns._tcp.agent.provider.com.  IN  RRSIG URI ...
 
 which triggers a lookup for dns.agent.provider.com. SVCB to get the IPv4
 and IPv6 addresses as ipv4hints and ipv6hints in the response to the
 SVCB query:
 
 dns.agent.provider.com.   IN  SVCB  1 . ipv4hint=5.6.7.8 ipv6hint=2001::53
-dns.agent.provider.com.   IN  RRSIG SVCB …
+dns.agent.provider.com.   IN  RRSIG SVCB ...
 
 and also a lookup for the JWK record(s) for dns.agent.provider.com.
 The JWK RDATA is the base64-encoded JSON Web Key; for example, a
@@ -1308,7 +1308,7 @@ dns.agent.provider.com.  0 IN JWK (
                           m96NHFSeUNyRjQiLCJ5IjoiRDlBbEg0bTVnMDktTnhY
                           cnAzSHkxYmdOeXNLUDBBRXp3Qm9aUEVTOGJFdyJ9" )
 dns.agent.provider.com.  0 IN JWK ( "...base64 P-256 enc key..." )
-dns.agent.provider.com.    IN RRSIG JWK …
+dns.agent.provider.com.    IN RRSIG JWK ...
 
 The signing key (use="sig") enables verification of JWS-signed
 payloads from the remote Agent. The encryption key (use="enc")
@@ -1363,20 +1363,20 @@ zone.example.     IN HSYNC  remote  agent.provider.com. .
 the local Agent will look up the URI record for agent.provider.com:
 
 _https._tcp.agent.provider.com.  IN  URI  10 10 "https://api.provider.com:443/api/v2/"
-_https._tcp.agent.provider.com.  IN  RRSIG URI …
+_https._tcp.agent.provider.com.  IN  RRSIG URI ...
 
 which triggers a lookup for api.provider.com IPv4 and IPv6
 addresses as hints in an SVCB RR:
 
 api.provider.com.   IN  SVCB 1 ipv4hint=1.2.3.4 ipv6hint=2001::bad:cafe:443
-api.provider.com.   IN  RRSIG SVCB …
+api.provider.com.   IN  RRSIG SVCB ...
 
 Now we know the IP-address and the port as well as the base URL to
 use. Finally the TLSA record for _443._tcp.api.provider.com is
 looked up, with a response that may look like this:
 
-  _443._tcp.api.provider.com.  IN  TLSA 3 1 1 ….
-  _443._tcp.api.provider.com.  IN  RRSIG TLSA …
+  _443._tcp.api.provider.com.  IN  TLSA 3 1 1 ....
+  _443._tcp.api.provider.com.  IN  RRSIG TLSA ...
 
 Once all the DNS lookups and DNSSEC-validation of the returned data
 has been done, the local Agent is able to initiate communication with
@@ -1680,8 +1680,8 @@ secure communication with other Agents are published:
 
 ## Exchanging Zone Data Between Agents
 
-Agents exchange synchronization messages — HELLO, BEAT, SYNC, and
-the other message types defined in {{defined-message-types}} — over
+Agents exchange synchronization messages -- HELLO, BEAT, SYNC, and
+the other message types defined in {{defined-message-types}} -- over
 either DNS- or API-transport. The messages themselves are the same in
 both cases; in the DNS case they are encapsulated in CHUNKs, the
 framing mechanism defined in {{?I-D.berra-dnsop-chunk-framing}},
