@@ -1970,16 +1970,17 @@ range are to be made through Specification Required review
 > Agent messages (HELLO, BEAT, SYNC, etc.) are described as message
 > types rather than as fields of a dedicated EDNS option.
 
-> Agent authentication uses JWS signatures (DNS transport) or TLS
-> (API transport), with keys discovered from JWK records; optional
-> payload confidentiality uses JWE. SIG(0) is no longer used for
-> agent-to-agent authentication. (The child SIG(0) KEY publication
-> for the delegation-mgmt-via-ddns bootstrap, via the HSYNCPARAM
-> pubkey key, is a separate use and is retained.)
+> Agent authentication uses the JOSE framework: JWS signatures (DNS
+> transport) or TLS (API transport), with keys discovered from JWK
+> records; optional payload confidentiality uses JWE. SIG(0) is no
+> longer used for agent-to-agent authentication. (The child SIG(0) KEY
+> publication for the delegation-mgmt-via-ddns bootstrap, via the
+> HSYNCPARAM pubkey key, is a separate use and is retained.)
 
-> Replaced hardcoded section references with kramdown anchors and
-> corrected the inter-draft citation anchors. Editorial fixes
-> throughout (typos, duplicate words, "Provider" capitalization,
+> Rewrote and tightened the Abstract to match the re-scoped
+> architecture. Replaced hardcoded section references with kramdown
+> anchors and corrected the inter-draft citation anchors. Editorial
+> fixes throughout (typos, duplicate words, "Provider" capitalization,
 > sequence-diagram alignment).
 
 * draft-leon-dnsop-signaling-zone-owner-intent-00
