@@ -716,13 +716,14 @@ assign meaning to keys in that range without registration. Key number
 
 # HSYNCPARAM Keys
 
-This section defines the eight HSYNCPARAM keys assigned by this
+This section defines the nine HSYNCPARAM keys assigned by this
 document. The order reflects the typical sequence of decisions a
 zone owner makes when configuring a multi-provider deployment:
 first the role assignments (who serves the zone, who signs it, who
 audits it), then auxiliary policy (NS management, parent
 synchronization, in-bailiwick naming, and publication intent for
-provider-managed records).
+provider-managed records), and last the serial number that tells
+one version of these instructions from the next.
 
 ## servers {#servers}
 
@@ -919,6 +920,28 @@ CDS or CDNSKEY records on behalf of the zone.
 Example:
 
 zone.example. IN HSYNCPARAM signers="fox,hare" pubkey pubcds
+
+## serial {#serial}
+
+Key number: 8
+
+Type: value, an unsigned 32-bit integer.
+
+The `serial` key carries a number that the zone owner raises at
+every change of the zone's HSYNC or HSYNCPARAM records. A receiver
+may use it to tell one version of the zone owner's instructions
+from the next. Values are compared using serial number arithmetic
+{{!RFC1982}}, as for the SOA serial.
+
+In the RDATA the value is encoded as four octets in network byte
+order. In presentation format it is written as a decimal number
+from 0 to 4294967295.
+
+If `serial` is absent, the value is taken to be 0.
+
+Example:
+
+zone.example. IN HSYNCPARAM signers="fox,hare" serial="7"
 
 
 # Linking HSYNC and HSYNCPARAM {#linking-hsync-and-hsyncparam}
@@ -1908,7 +1931,7 @@ Reference
 The HSYNCPARAM record carries policy as a list of key-value pairs.
 IANA is requested to create and maintain a new registry entitled
 "HSYNCPARAM Keys", used by the HSYNCPARAM RR type. The keys defined
-by this document are listed below; future assignments in the 8-32767
+by this document are listed below; future assignments in the 9-32767
 range are to be made through Specification Required review
 {{?BCP26}}.
 
@@ -1922,13 +1945,20 @@ range are to be made through Specification Required review
 | 5           | suffix      | DNS label below which Providers may add NS/glue | (This document)   |
 | 6           | pubkey      | Publish SIG(0) KEY record under _signal.{nsname} | (This document) |
 | 7           | pubcds      | Publish CDS/CDNSKEY records under _signal.{nsname} | (This document) |
-| 8-32767     | Unassigned  |                                             |                   |
+| 8           | serial      | Serial number of the zone owner's instructions | (This document) |
+| 9-32767     | Unassigned  |                                             |                   |
 | 32768-65534 | Private Use |                                             | (This document)   |
 | 65535       | Reserved    | MUST NOT be assigned                        | (This document)   |
 
 --- back
 
 # Change History (to be removed before publication)
+
+* draft-leon-dnsop-signaling-zone-owner-intent-02
+
+> Added HSYNCPARAM key 8, `serial`: a number the zone owner raises at
+> every change of the zone's HSYNC or HSYNCPARAM records, compared
+> using serial number arithmetic.
 
 * draft-leon-dnsop-signaling-zone-owner-intent-01
 
