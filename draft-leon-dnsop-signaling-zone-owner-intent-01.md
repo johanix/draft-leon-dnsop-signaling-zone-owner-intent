@@ -614,8 +614,11 @@ zone.example.    IN HSYNC  Label  Identity  Upstream
 Label:
     An unqualified token (NOT a fully qualified domain name) that
     serves as a short handle for this Provider within HSYNCPARAM
-    key values. Two HSYNC records in the same zone MUST NOT use
-    the same Label.
+    key values. A Label is 1 to 16 characters long, and each
+    character is a lowercase ASCII letter (a-z), a digit (0-9) or
+    a hyphen (-). As uppercase letters are not allowed, Labels are
+    compared octet by octet, with no case folding. Two HSYNC
+    records in the same zone MUST NOT use the same Label.
 
 Identity:
     Domain name. Used to uniquely identify the Agent for the DNS
@@ -741,7 +744,12 @@ The Labels used in HSYNCPARAM list keys are unqualified tokens, not
 fully qualified domain names. They are short handles defined by
 the HSYNC records in the same zone; the FQDN of each Provider's
 Agent is given by the HSYNC Identity field. See {{the-hsync-rrset}}
-for the HSYNC record format.
+for the HSYNC record format and the syntax of a Label.
+
+A list key's value is Labels separated by commas, and nothing else:
+no spaces and no empty items. A value with an empty item (such as
+"fox,,hare") or with an item that is not a Label is malformed, and a
+receiver MUST reject the HSYNCPARAM record.
 
 Example:
 
@@ -1959,6 +1967,10 @@ range are to be made through Specification Required review
 > Added HSYNCPARAM key 8, `serial`: a number the zone owner raises at
 > every change of the zone's HSYNC or HSYNCPARAM records, compared
 > using serial number arithmetic.
+
+> Defined the syntax of a Label: 1 to 16 characters, each a lowercase
+> ASCII letter, a digit or a hyphen. A list key with an empty item or
+> an item that is not a Label is malformed.
 
 * draft-leon-dnsop-signaling-zone-owner-intent-01
 
